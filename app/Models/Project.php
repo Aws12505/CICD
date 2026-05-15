@@ -12,8 +12,15 @@ class Project extends Model
 
     protected $fillable = [
         'name',
+        'repo_owner',
         'repo_name',
+        'repo_full_name',
         'description',
+        'github_secret',
+    ];
+
+    protected $hidden = [
+        'github_secret',
     ];
 
     public function pipelines(): HasMany

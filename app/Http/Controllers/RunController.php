@@ -18,7 +18,7 @@ class RunController extends Controller
             ->latest()
             ->limit(100)
             ->get()
-            ->map(fn ($run) => $this->transformRun($run));
+            ->map(fn($run) => $this->transformRun($run));
 
         return Inertia::render('runs/index', [
             'runs' => $runs,
@@ -34,7 +34,7 @@ class RunController extends Controller
 
         return Inertia::render('runs/show', [
             'run' => $this->transformRun($run),
-            'steps' => $run->stepResults->map(fn ($s) => [
+            'steps' => $run->stepResults->map(fn($s) => [
                 'id' => $s->id,
                 'step_index' => $s->step_index,
                 'name' => $s->name,
@@ -59,9 +59,13 @@ class RunController extends Controller
             'pusher' => 'manual-rerun',
             'triggered_by' => 'rerun',
             'log_path' => 'logs/pipeline-runs/'
-                .preg_replace('/[^A-Za-z0-9._-]/', '-', $pipeline->project->repo_name)
-                .'/'.preg_replace('/[^A-Za-z0-9._-]/', '-', $pipeline->branch)
-                .'/'.now()->format('Ymd-His').'-'.uniqid().'.log',
+                . preg_replace(
+                    '/[^A-Za-z0-9._-]/',
+                    '-',
+                    $pipeline->project->repo_full_name ?? $pipeline->project->repo_name,
+                )
+                . '/' . preg_replace('/[^A-Za-z0-9._-]/', '-', $pipeline->branch)
+                . '/' . now()->format('Ymd-His') . '-' . uniqid() . '.log',
         ]);
 
         ExecutePipelineJob::dispatch($newRun->id);
@@ -75,7 +79,7 @@ class RunController extends Controller
             'id' => $run->id,
             'pipeline_id' => $run->pipeline_id,
             'project_name' => $run->pipeline->project->name,
-            'repo_name' => $run->pipeline->project->repo_name,
+            'repo_name' => $run->pipeline->project->repo_full_name ?? $run->pipeline->project->repo_name,
             'branch' => $run->pipeline->branch,
             'status' => $run->status,
             'commit_sha' => $run->commit_sha,

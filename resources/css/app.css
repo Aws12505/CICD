@@ -2,6 +2,8 @@
 
 @import 'tw-animate-css';
 
+@import url('https://fonts.bunny.net/css?family=space-grotesk:400,500,600,700&display=swap');
+
 @source '../views';
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 
@@ -133,6 +135,14 @@
 }
 
 @layer base {
+    :root {
+        --font-display: 'Space Grotesk', var(--font-sans);
+    }
+
+    .font-display {
+        font-family: var(--font-display);
+    }
+
     * {
         @apply border-border;
     }

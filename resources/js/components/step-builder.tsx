@@ -1,7 +1,9 @@
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 
 export interface PipelineStep {
@@ -42,8 +44,8 @@ export function StepBuilder({ steps, onChange }: StepBuilderProps) {
         const target = index + dir;
 
         if (target < 0 || target >= steps.length) {
-return;
-}
+            return;
+        }
 
         const next = [...steps];
         [next[index], next[target]] = [next[target], next[index]];
@@ -63,14 +65,14 @@ return;
             const trimmed = line.trim();
 
             if (!trimmed) {
-return;
-}
+                return;
+            }
 
             const eq = trimmed.indexOf('=');
 
             if (eq === -1) {
-return;
-}
+                return;
+            }
 
             out[trimmed.slice(0, eq).trim()] = trimmed.slice(eq + 1).trim();
         });
@@ -83,13 +85,16 @@ return;
             {steps.map((step, index) => (
                 <div
                     key={step.id}
-                    className="rounded-xl border border-sidebar-border/70 bg-card p-4 dark:border-sidebar-border"
+                    className="rounded-2xl border border-sidebar-border/70 bg-card/80 p-5 shadow-sm dark:border-sidebar-border"
                 >
-                    <div className="mb-3 flex items-center justify-between">
-                        <span className="text-sm font-semibold text-muted-foreground">
-                            Step {index + 1}
-                        </span>
-                        <div className="flex gap-1">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <Badge variant="secondary">Step {index + 1}</Badge>
+                            <span className="text-sm font-semibold">
+                                {step.name || 'Untitled step'}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-1">
                             <Button
                                 type="button"
                                 variant="ghost"
@@ -119,13 +124,17 @@ return;
                         </div>
                     </div>
 
+                    <Separator className="my-4" />
+
                     <div className="grid gap-4">
                         <div className="grid gap-2">
                             <Label>Name</Label>
                             <Input
                                 value={step.name}
                                 placeholder="Build Docker image"
-                                onChange={(e) => update(index, { name: e.target.value })}
+                                onChange={(e) =>
+                                    update(index, { name: e.target.value })
+                                }
                             />
                         </div>
 
@@ -136,7 +145,9 @@ return;
                                 rows={3}
                                 className="font-mono text-xs"
                                 placeholder="docker compose -p MyApp build app"
-                                onChange={(e) => update(index, { command: e.target.value })}
+                                onChange={(e) =>
+                                    update(index, { command: e.target.value })
+                                }
                             />
                         </div>
 
@@ -147,7 +158,9 @@ return;
                                     value={step.cwd}
                                     className="font-mono text-xs"
                                     placeholder="/root/core/apps/MyApp"
-                                    onChange={(e) => update(index, { cwd: e.target.value })}
+                                    onChange={(e) =>
+                                        update(index, { cwd: e.target.value })
+                                    }
                                 />
                             </div>
                             <div className="grid gap-2">
@@ -157,21 +170,27 @@ return;
                                     value={step.timeout}
                                     min={0}
                                     onChange={(e) =>
-                                        update(index, { timeout: Number(e.target.value) })
+                                        update(index, {
+                                            timeout: Number(e.target.value),
+                                        })
                                     }
                                 />
                             </div>
                         </div>
 
                         <div className="grid gap-2">
-                            <Label>Environment variables (KEY=value, one per line)</Label>
+                            <Label>
+                                Environment variables (KEY=value, one per line)
+                            </Label>
                             <Textarea
                                 value={envToText(step.env)}
                                 rows={2}
                                 className="font-mono text-xs"
                                 placeholder="NODE_ENV=production"
                                 onChange={(e) =>
-                                    update(index, { env: textToEnv(e.target.value) })
+                                    update(index, {
+                                        env: textToEnv(e.target.value),
+                                    })
                                 }
                             />
                         </div>
@@ -179,7 +198,12 @@ return;
                 </div>
             ))}
 
-            <Button type="button" variant="outline" onClick={add} className="w-full">
+            <Button
+                type="button"
+                variant="outline"
+                onClick={add}
+                className="w-full"
+            >
                 <Plus className="size-4" /> Add step
             </Button>
         </div>

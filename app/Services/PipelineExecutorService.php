@@ -28,7 +28,7 @@ class PipelineExecutorService
         $this->broadcastStatus($run);
 
         $context = [
-            'repo' => $pipeline->project->repo_name,
+            'repo' => $pipeline->project->repo_full_name ?? $pipeline->project->repo_name,
             'branch' => $pipeline->branch,
             'commit' => $run->commit_sha ?? '',
         ];
@@ -56,7 +56,7 @@ class PipelineExecutorService
             try {
                 $exitCode = $this->runStep($run, $logPath, $step, $context);
             } catch (Throwable $e) {
-                $this->writeLog($run, $logPath, "\nFATAL: ".$e->getMessage()."\n");
+                $this->writeLog($run, $logPath, "\nFATAL: " . $e->getMessage() . "\n");
                 Log::error('Pipeline step crashed', ['run_id' => $run->id, 'exception' => $e]);
                 $exitCode = 255;
             }
@@ -94,7 +94,7 @@ class PipelineExecutorService
             'duration_ms' => $totalDuration,
         ]);
 
-        $this->writeLog($run, $logPath, "\nPipeline ".($failed ? 'FAILED' : 'SUCCEEDED')." in {$totalDuration}ms\n");
+        $this->writeLog($run, $logPath, "\nPipeline " . ($failed ? 'FAILED' : 'SUCCEEDED') . " in {$totalDuration}ms\n");
         $this->broadcastStatus($run);
     }
 
@@ -145,7 +145,7 @@ class PipelineExecutorService
             $envMerged
         );
 
-        if (! is_resource($process)) {
+        if (!is_resource($process)) {
             $this->writeLog($run, $logPath, "Failed to spawn process.\n");
 
             return 255;
@@ -163,7 +163,7 @@ class PipelineExecutorService
             $this->drainStream($pipes[1], $run, $logPath);
             $this->drainStream($pipes[2], $run, $logPath);
 
-            if (! $status['running']) {
+            if (!$status['running']) {
                 break;
             }
 

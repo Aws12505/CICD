@@ -6,7 +6,6 @@ use App\Models\Pipeline;
 use App\Models\Project;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -15,9 +14,13 @@ class PipelineController extends Controller
     public function create(Project $project): Response
     {
         return Inertia::render('pipelines/edit', [
-            'project' => ['id' => $project->id, 'name' => $project->name, 'repo_name' => $project->repo_name],
+            'project' => [
+                'id' => $project->id,
+                'name' => $project->name,
+                'repo_name' => $project->repo_name,
+                'repo_full_name' => $project->repo_full_name,
+            ],
             'pipeline' => null,
-            'generatedSecret' => Str::random(40),
         ]);
     }
 
@@ -39,15 +42,14 @@ class PipelineController extends Controller
                 'id' => $pipeline->project->id,
                 'name' => $pipeline->project->name,
                 'repo_name' => $pipeline->project->repo_name,
+                'repo_full_name' => $pipeline->project->repo_full_name,
             ],
             'pipeline' => [
                 'id' => $pipeline->id,
                 'branch' => $pipeline->branch,
                 'enabled' => $pipeline->enabled,
                 'steps' => $pipeline->steps ?? [],
-                'github_secret' => $pipeline->getRawOriginal('github_secret'),
             ],
-            'generatedSecret' => Str::random(40),
         ]);
     }
 
@@ -70,11 +72,10 @@ class PipelineController extends Controller
 
     private function validatePipeline(Request $request, int $projectId, ?int $ignoreId = null): array
     {
-        $unique = 'unique:pipelines,branch,'.($ignoreId ?? 'NULL').',id,project_id,'.$projectId;
+        $unique = 'unique:pipelines,branch,' . ($ignoreId ?? 'NULL') . ',id,project_id,' . $projectId;
 
         return $request->validate([
             'branch' => ['required', 'string', 'max:255', $unique],
-            'github_secret' => ['required', 'string', 'min:8', 'max:255'],
             'enabled' => ['boolean'],
             'steps' => ['array'],
             'steps.*.id' => ['required', 'string'],

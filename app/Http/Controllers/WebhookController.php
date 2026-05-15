@@ -12,7 +12,9 @@ use Illuminate\Support\Facades\Log;
 
 class WebhookController extends Controller
 {
-    public function __construct(private GitHubSignatureService $signatures) {}
+    public function __construct(private GitHubSignatureService $signatures)
+    {
+    }
 
     public function github(Request $request): JsonResponse
     {
@@ -27,32 +29,45 @@ class WebhookController extends Controller
         }
 
         $payload = $request->all();
+        $repoFullName = data_get($payload, 'repository.full_name');
         $repoName = data_get($payload, 'repository.name');
+        $repoOwner = data_get($payload, 'repository.owner.login')
+            ?: data_get($payload, 'repository.owner.name');
         $ref = data_get($payload, 'ref', '');
         $branch = str_replace('refs/heads/', '', $ref);
+        $resolvedFullName = $repoFullName ?: ($repoOwner && $repoName ? "{$repoOwner}/{$repoName}" : null);
 
-        if (! $repoName || ! $branch) {
-            return response()->json(['error' => 'Missing repository name or branch'], 400);
+        if (!$resolvedFullName || !$branch) {
+            return response()->json(['error' => 'Missing repository full name or branch'], 400);
         }
 
         $pipeline = Pipeline::query()
-            ->whereHas('project', fn ($q) => $q->where('repo_name', $repoName))
+            ->with('project')
+            ->whereHas('project', fn($q) => $q->where('repo_full_name', $resolvedFullName))
             ->where('branch', $branch)
             ->where('enabled', true)
             ->first();
 
-        if (! $pipeline) {
-            Log::info('No pipeline configured', ['repo' => $repoName, 'branch' => $branch]);
+        if (!$pipeline) {
+            Log::info('No pipeline configured', ['repo' => $resolvedFullName, 'branch' => $branch]);
 
             return response()->json([
-                'error' => "No enabled pipeline for {$repoName}:{$branch}",
+                'error' => "No enabled pipeline for {$resolvedFullName}:{$branch}",
             ], 404);
         }
 
         $signature = $request->header('X-Hub-Signature-256');
         $rawBody = $request->getContent();
 
-        if (! $this->signatures->verify($pipeline->github_secret, $rawBody, $signature)) {
+        $secret = $pipeline->project->getRawOriginal('github_secret');
+
+        if (!$secret) {
+            Log::warning('Missing project webhook secret', ['project_id' => $pipeline->project->id]);
+
+            return response()->json(['error' => 'Webhook secret not configured'], 422);
+        }
+
+        if (!$this->signatures->verify($secret, $rawBody, $signature)) {
             Log::warning('Invalid webhook signature', ['pipeline_id' => $pipeline->id]);
 
             return response()->json(['error' => 'Invalid signature'], 401);
@@ -80,10 +95,10 @@ class WebhookController extends Controller
 
     private function buildLogPath(Pipeline $pipeline, string $branch): string
     {
-        $safe = fn ($v) => preg_replace('/[^A-Za-z0-9._-]/', '-', (string) $v);
+        $safe = fn($v) => preg_replace('/[^A-Za-z0-9._-]/', '-', (string) $v);
 
-        return 'logs/pipeline-runs/'.$safe($pipeline->project->repo_name)
-            .'/'.$safe($branch)
-            .'/'.now()->format('Ymd-His').'-'.uniqid().'.log';
+        return 'logs/pipeline-runs/' . $safe($pipeline->project->repo_full_name ?? $pipeline->project->repo_name)
+            . '/' . $safe($branch)
+            . '/' . now()->format('Ymd-His') . '-' . uniqid() . '.log';
     }
 }

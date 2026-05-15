@@ -16,7 +16,7 @@ class DashboardController extends Controller
             ->latest()
             ->limit(15)
             ->get()
-            ->map(fn ($run) => [
+            ->map(fn($run) => [
                 'id' => $run->id,
                 'project_name' => $run->pipeline->project->name,
                 'branch' => $run->pipeline->branch,
@@ -29,16 +29,18 @@ class DashboardController extends Controller
             ]);
 
         $projects = Project::query()
-            ->with(['pipelines' => function ($q) {
-                $q->with(['latestRun']);
-            }])
+            ->with([
+                'pipelines' => function ($q) {
+                    $q->with(['latestRun']);
+                }
+            ])
             ->orderBy('name')
             ->get()
-            ->map(fn ($project) => [
+            ->map(fn($project) => [
                 'id' => $project->id,
                 'name' => $project->name,
-                'repo_name' => $project->repo_name,
-                'pipelines' => $project->pipelines->map(fn ($p) => [
+                'repo_name' => $project->repo_full_name ?? $project->repo_name,
+                'pipelines' => $project->pipelines->map(fn($p) => [
                     'id' => $p->id,
                     'branch' => $p->branch,
                     'enabled' => $p->enabled,

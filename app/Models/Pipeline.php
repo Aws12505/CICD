@@ -14,7 +14,6 @@ class Pipeline extends Model
     protected $fillable = [
         'project_id',
         'branch',
-        'github_secret',
         'steps',
         'enabled',
     ];
@@ -24,9 +23,7 @@ class Pipeline extends Model
         'enabled' => 'boolean',
     ];
 
-    protected $hidden = [
-        'github_secret',
-    ];
+    protected $hidden = [];
 
     public function project(): BelongsTo
     {
