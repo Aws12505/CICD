@@ -1,0 +1,30 @@
+name: LCPortalCICD
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: LCPortalCICD_Backend
+    ports:
+      - "42069:80"
+    volumes:
+      - ./:/var/www/html:delegated
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: LCPortalCICD_Worker
+    ports:
+      - "42070:8080"
+    volumes:
+      - ./:/var/www/html:delegated
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /root/core/apps:/root/core/apps
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
