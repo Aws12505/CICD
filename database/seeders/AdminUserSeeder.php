@@ -10,9 +10,9 @@ class AdminUserSeeder extends Seeder
 {
     public function run(): void
     {
-        $email = env('CICD_ADMIN_EMAIL', 'admin@lcportal.cloud');
-        $password = env('CICD_ADMIN_PASSWORD', 'password');
-        $name = env('CICD_ADMIN_NAME', 'CICD Admin');
+        $email = config('auth.admin_email');
+        $password = config('auth.admin_password');
+        $name = config('auth.admin_name');
 
         User::updateOrCreate(
             ['email' => $email],

@@ -114,4 +114,7 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    'admin_email' => env('CICD_ADMIN_EMAIL', 'admin@lcportal.cloud'),
+    'admin_password' => env('CICD_ADMIN_PASSWORD', 'password'),
+    'admin_name' => env('CICD_ADMIN_NAME', 'CICD Admin'),
 ];
