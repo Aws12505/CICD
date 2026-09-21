@@ -2,17 +2,36 @@
 
 namespace App\Services;
 
+use App\Contracts\Target;
 use App\Events\PipelineLogLine;
 use App\Events\PipelineRunStatusChanged;
 use App\Models\PipelineRun;
 use App\Models\PipelineStepResult;
+use App\Targets\LocalTarget;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class PipelineExecutorService
 {
-    public function execute(PipelineRun $run): void
+    /**
+     * @param  Target|null  $target  where the steps run. Defaults to this machine,
+     *                               so every pipeline that predates remote
+     *                               execution behaves exactly as before.
+     */
+    public function execute(PipelineRun $run, ?Target $target = null): void
+    {
+        $target ??= new LocalTarget;
+
+        try {
+            $this->run($run, $target);
+        } finally {
+            // Always — an SshTarget holds a private key on disk until this runs.
+            $target->cleanup();
+        }
+    }
+
+    private function run(PipelineRun $run, Target $target): void
     {
         $pipeline = $run->pipeline;
         $steps = $pipeline->steps ?? [];
@@ -37,7 +56,8 @@ class PipelineExecutorService
         $this->writeLog($run, $logPath, "Project: {$context['repo']}\n");
         $this->writeLog($run, $logPath, "Branch: {$context['branch']}\n");
         $this->writeLog($run, $logPath, "Commit: {$context['commit']}\n");
-        $this->writeLog($run, $logPath, "Started: {$run->started_at}\n\n");
+        $this->writeLog($run, $logPath, "Started: {$run->started_at}\n");
+        $this->writeLog($run, $logPath, "Target: {$target->label()}\n\n");
 
         $stepRecords = $this->bootstrapStepRecords($run, $steps);
 
@@ -53,15 +73,20 @@ class PipelineExecutorService
             ]);
             $this->broadcastStatus($run);
 
+            $stepStartedAt = microtime(true);
+
             try {
-                $exitCode = $this->runStep($run, $logPath, $step, $context);
+                $exitCode = $this->runStep($run, $logPath, $step, $context, $target);
             } catch (Throwable $e) {
-                $this->writeLog($run, $logPath, "\nFATAL: " . $e->getMessage() . "\n");
+                $this->writeLog($run, $logPath, "\nFATAL: ".$e->getMessage()."\n");
                 Log::error('Pipeline step crashed', ['run_id' => $run->id, 'exception' => $e]);
                 $exitCode = 255;
             }
 
-            $stepDuration = (int) ((microtime(true) - $startedAt) * 1000);
+            // Measured from this step, not from the run. It used to be the
+            // latter, so every step reported the elapsed time of the whole
+            // pipeline so far.
+            $stepDuration = (int) ((microtime(true) - $stepStartedAt) * 1000);
 
             $record->update([
                 'status' => $exitCode === 0 ? 'success' : 'failed',
@@ -94,7 +119,7 @@ class PipelineExecutorService
             'duration_ms' => $totalDuration,
         ]);
 
-        $this->writeLog($run, $logPath, "\nPipeline " . ($failed ? 'FAILED' : 'SUCCEEDED') . " in {$totalDuration}ms\n");
+        $this->writeLog($run, $logPath, "\nPipeline ".($failed ? 'FAILED' : 'SUCCEEDED')." in {$totalDuration}ms\n");
         $this->broadcastStatus($run);
     }
 
@@ -116,18 +141,22 @@ class PipelineExecutorService
         return $records;
     }
 
-    private function runStep(PipelineRun $run, string $logPath, array $step, array $context): int
+    private function runStep(PipelineRun $run, string $logPath, array $step, array $context, Target $target): int
     {
         $command = $this->interpolate((string) ($step['command'] ?? ''), $context);
         $cwd = $this->interpolate((string) ($step['cwd'] ?? base_path()), $context);
-        $env = $step['env'] ?? [];
         $timeout = (int) ($step['timeout'] ?? 0);
 
-        $envMerged = array_merge(getenv() ?: [], $env, [
+        $env = array_merge($step['env'] ?? [], [
             'CICD_REPO' => $context['repo'],
             'CICD_BRANCH' => $context['branch'],
             'CICD_COMMIT' => $context['commit'],
         ]);
+
+        // The Target decides how cwd and env reach the command: locally they
+        // are proc_open arguments, over SSH they have to be part of the remote
+        // script, because proc_open's would apply to the ssh client instead.
+        $invocation = $target->invoke($command, $cwd, $env);
 
         $this->writeLog($run, $logPath, "\n$ cd {$cwd}\n$ {$command}\n\n");
 
@@ -138,14 +167,14 @@ class PipelineExecutorService
         ];
 
         $process = @proc_open(
-            ['/bin/bash', '-lc', $command],
+            $invocation->argv,
             $descriptorSpec,
             $pipes,
-            is_dir($cwd) ? $cwd : null,
-            $envMerged
+            $invocation->cwd,
+            $invocation->env
         );
 
-        if (!is_resource($process)) {
+        if (! is_resource($process)) {
             $this->writeLog($run, $logPath, "Failed to spawn process.\n");
 
             return 255;
@@ -163,7 +192,7 @@ class PipelineExecutorService
             $this->drainStream($pipes[1], $run, $logPath);
             $this->drainStream($pipes[2], $run, $logPath);
 
-            if (!$status['running']) {
+            if (! $status['running']) {
                 break;
             }
 
