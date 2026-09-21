@@ -4,6 +4,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PipelineController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\RunController;
+use App\Http\Controllers\ServerController;
 use Illuminate\Support\Facades\Route;
 
 // Route::redirect rather than a closure: closures cannot be route-cached, and
@@ -53,6 +54,26 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // A rerun executes arbitrary shell as root on the host, so it is not
         // a read action however harmless the button looks.
         Route::post('runs/{run}/rerun', [RunController::class, 'rerun'])->name('runs.rerun');
+    });
+
+    /*
+    |------------------------------------------------------------------
+    | Servers — admin only, all of it
+    |------------------------------------------------------------------
+    | A server row holds a private key granting root on a client's machine.
+    | Even reading the list tells you the estate, so this is not viewer
+    | territory at any level.
+    */
+    Route::middleware('role:admin')->group(function () {
+        Route::get('servers', [ServerController::class, 'index'])->name('servers.index');
+        Route::get('servers/create', [ServerController::class, 'create'])->name('servers.create');
+        Route::post('servers', [ServerController::class, 'store'])->name('servers.store');
+        Route::get('servers/{server}', [ServerController::class, 'show'])->name('servers.show');
+        Route::get('servers/{server}/edit', [ServerController::class, 'edit'])->name('servers.edit');
+        Route::match(['put', 'patch'], 'servers/{server}', [ServerController::class, 'update'])->name('servers.update');
+        Route::delete('servers/{server}', [ServerController::class, 'destroy'])->name('servers.destroy');
+        Route::post('servers/{server}/check', [ServerController::class, 'check'])->name('servers.check');
+        Route::post('servers/{server}/rescan', [ServerController::class, 'rescan'])->name('servers.rescan');
     });
 
     /*

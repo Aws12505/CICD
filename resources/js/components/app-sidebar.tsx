@@ -1,11 +1,5 @@
 import { Link } from '@inertiajs/react';
-import {
-    BookOpen,
-    FolderGit2,
-    LayoutGrid,
-    ListChecks,
-    Boxes,
-} from 'lucide-react';
+import { LayoutGrid, ListChecks, Boxes, Server } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -19,6 +13,7 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
+import { useAbilities } from '@/hooks/use-abilities';
 import { dashboard } from '@/routes';
 import type { NavItem } from '@/types';
 
@@ -40,9 +35,25 @@ const mainNavItems: NavItem[] = [
     },
 ];
 
+// Servers hold keys that grant root on client machines, so even the nav
+// entry is admin-only — see routes/web.php, which is what enforces it.
+const adminNavItems: NavItem[] = [
+    {
+        title: 'Servers',
+        href: '/servers',
+        icon: Server,
+    },
+];
+
 const footerNavItems: NavItem[] = [];
 
 export function AppSidebar() {
+    const { destroy: isAdmin } = useAbilities();
+
+    const navItems = isAdmin
+        ? [...mainNavItems, ...adminNavItems]
+        : mainNavItems;
+
     return (
         <Sidebar collapsible="icon" variant="inset">
             <SidebarHeader>
@@ -58,7 +69,7 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain items={mainNavItems} />
+                <NavMain items={navItems} />
             </SidebarContent>
 
             <SidebarFooter>
