@@ -33,6 +33,16 @@ const mainNavItems: NavItem[] = [
         href: '/runs',
         icon: ListChecks,
     },
+    {
+        title: 'Clients',
+        href: '/clients',
+        icon: Building2,
+    },
+    {
+        title: 'Services',
+        href: '/services',
+        icon: Layers,
+    },
 ];
 
 // Servers hold keys that grant root on client machines, so even the nav

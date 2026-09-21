@@ -1,10 +1,12 @@
 <?php
 
+use App\Http\Controllers\ClientController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PipelineController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\RunController;
 use App\Http\Controllers\ServerController;
+use App\Http\Controllers\ServiceController;
 use Illuminate\Support\Facades\Route;
 
 // Route::redirect rather than a closure: closures cannot be route-cached, and
@@ -58,6 +60,35 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     /*
     |------------------------------------------------------------------
+    | Clients and services — the topology
+    |------------------------------------------------------------------
+    | Readable by anyone signed in; changing who runs what is operator work,
+    | and removing a client or service is admin work.
+    */
+    Route::get('clients', [ClientController::class, 'index'])->name('clients.index');
+    Route::get('services', [ServiceController::class, 'index'])->name('services.index');
+
+    Route::middleware('role:admin|operator')->group(function () {
+        Route::get('clients/create', [ClientController::class, 'create'])->name('clients.create');
+        Route::post('clients', [ClientController::class, 'store'])->name('clients.store');
+        Route::get('services/create', [ServiceController::class, 'create'])->name('services.create');
+        Route::post('services', [ServiceController::class, 'store'])->name('services.store');
+    });
+
+    Route::get('clients/{client}', [ClientController::class, 'show'])->name('clients.show');
+    Route::get('services/{service}', [ServiceController::class, 'show'])->name('services.show');
+
+    Route::middleware('role:admin|operator')->group(function () {
+        Route::match(['put', 'patch'], 'clients/{client}', [ClientController::class, 'update'])->name('clients.update');
+        Route::post('stacks/{stack}/entitlements', [ClientController::class, 'setEntitlement'])->name('stacks.entitlements');
+
+        Route::match(['put', 'patch'], 'services/{service}', [ServiceController::class, 'update'])->name('services.update');
+        Route::post('services/{service}/env', [ServiceController::class, 'storeDefinition'])->name('services.env.store');
+        Route::delete('services/{service}/env/{definition}', [ServiceController::class, 'destroyDefinition'])->name('services.env.destroy');
+    });
+
+    /*
+    |------------------------------------------------------------------
     | Servers — admin only, all of it
     |------------------------------------------------------------------
     | A server row holds a private key granting root on a client's machine.
@@ -82,6 +113,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     |------------------------------------------------------------------
     */
     Route::middleware('role:admin')->group(function () {
+        Route::delete('clients/{client}', [ClientController::class, 'destroy'])->name('clients.destroy');
+        Route::delete('services/{service}', [ServiceController::class, 'destroy'])->name('services.destroy');
         Route::delete('projects/{project}', [ProjectController::class, 'destroy'])->name('projects.destroy');
         Route::delete('pipelines/{pipeline}', [PipelineController::class, 'destroy'])->name('pipelines.destroy');
     });
