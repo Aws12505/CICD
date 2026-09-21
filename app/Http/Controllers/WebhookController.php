@@ -13,9 +13,7 @@ use Illuminate\Support\Facades\Log;
 
 class WebhookController extends Controller
 {
-    public function __construct(private GitHubSignatureService $signatures)
-    {
-    }
+    public function __construct(private GitHubSignatureService $signatures) {}
 
     public function github(Request $request): JsonResponse
     {
@@ -38,7 +36,7 @@ class WebhookController extends Controller
         $branch = str_replace('refs/heads/', '', $ref);
         $resolvedFullName = $repoFullName ?: ($repoOwner && $repoName ? "{$repoOwner}/{$repoName}" : null);
 
-        if (!$resolvedFullName || !$branch) {
+        if (! $resolvedFullName || ! $branch) {
             return response()->json(['error' => 'Missing repository full name or branch'], 400);
         }
 
@@ -54,7 +52,7 @@ class WebhookController extends Controller
             ->where('repo_full_name', $resolvedFullName)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             Log::info('Webhook for unknown repository', ['repo' => $resolvedFullName]);
 
             return $this->rejected();
@@ -62,13 +60,13 @@ class WebhookController extends Controller
 
         $secret = $project->github_secret;
 
-        if (!$secret) {
+        if (! $secret) {
             Log::warning('Project has no webhook secret configured', ['project_id' => $project->id]);
 
             return $this->rejected();
         }
 
-        if (!$this->signatures->verify($secret, $request->getContent(), $request->header('X-Hub-Signature-256'))) {
+        if (! $this->signatures->verify($secret, $request->getContent(), $request->header('X-Hub-Signature-256'))) {
             Log::warning('Invalid webhook signature', ['project_id' => $project->id]);
 
             return $this->rejected();
@@ -81,7 +79,7 @@ class WebhookController extends Controller
             ->where('enabled', true)
             ->first();
 
-        if (!$pipeline) {
+        if (! $pipeline) {
             Log::info('No pipeline configured', ['repo' => $resolvedFullName, 'branch' => $branch]);
 
             return response()->json([
@@ -123,10 +121,10 @@ class WebhookController extends Controller
 
     private function buildLogPath(Pipeline $pipeline, string $branch): string
     {
-        $safe = fn($v) => preg_replace('/[^A-Za-z0-9._-]/', '-', (string) $v);
+        $safe = fn ($v) => preg_replace('/[^A-Za-z0-9._-]/', '-', (string) $v);
 
-        return 'logs/pipeline-runs/' . $safe($pipeline->project->repo_full_name ?? $pipeline->project->repo_name)
-            . '/' . $safe($branch)
-            . '/' . now()->format('Ymd-His') . '-' . uniqid() . '.log';
+        return 'logs/pipeline-runs/'.$safe($pipeline->project->repo_full_name ?? $pipeline->project->repo_name)
+            .'/'.$safe($branch)
+            .'/'.now()->format('Ymd-His').'-'.uniqid().'.log';
     }
 }

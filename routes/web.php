@@ -2,8 +2,10 @@
 
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\OperationsController;
 use App\Http\Controllers\PipelineController;
 use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\ReleaseController;
 use App\Http\Controllers\RunController;
 use App\Http\Controllers\ServerController;
 use App\Http\Controllers\ServiceController;
@@ -85,6 +87,32 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::match(['put', 'patch'], 'services/{service}', [ServiceController::class, 'update'])->name('services.update');
         Route::post('services/{service}/env', [ServiceController::class, 'storeDefinition'])->name('services.env.store');
         Route::delete('services/{service}/env/{definition}', [ServiceController::class, 'destroyDefinition'])->name('services.env.destroy');
+    });
+
+    /*
+    |------------------------------------------------------------------
+    | Releases and operations
+    |------------------------------------------------------------------
+    | Anyone signed in can read what happened. Planning and running a release
+    | is operator work; an emergency and adopting drift are admin work,
+    | because both rewrite what we believe is correct.
+    */
+    Route::get('releases', [ReleaseController::class, 'index'])->name('releases.index');
+    Route::get('releases/{release}', [ReleaseController::class, 'show'])->name('releases.show');
+    Route::get('operations', [OperationsController::class, 'index'])->name('operations.index');
+
+    Route::middleware('role:admin|operator')->group(function () {
+        Route::post('releases', [ReleaseController::class, 'store'])->name('releases.store');
+        Route::post('releases/{release}/run', [ReleaseController::class, 'run'])->name('releases.run');
+        Route::post('releases/{release}/rollback', [ReleaseController::class, 'rollback'])->name('releases.rollback');
+        Route::post('releases/{release}/schedule', [ReleaseController::class, 'schedule'])->name('releases.schedule');
+        Route::post('drift/{observation}/converge', [OperationsController::class, 'converge'])->name('drift.converge');
+    });
+
+    Route::middleware('role:admin')->group(function () {
+        // Adopting rewrites what we believe should be deployed on the strength
+        // of someone's judgement, so it sits with the destructive actions.
+        Route::post('drift/{observation}/adopt', [OperationsController::class, 'adopt'])->name('drift.adopt');
     });
 
     /*

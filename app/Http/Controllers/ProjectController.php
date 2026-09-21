@@ -5,8 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Project;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -18,7 +18,7 @@ class ProjectController extends Controller
             ->withCount('pipelines')
             ->orderBy('name')
             ->get()
-            ->map(fn($p) => [
+            ->map(fn ($p) => [
                 'id' => $p->id,
                 'name' => $p->name,
                 'repo_owner' => $p->repo_owner,
@@ -66,7 +66,7 @@ class ProjectController extends Controller
 
     public function show(Request $request, Project $project): Response
     {
-        $project->load(['pipelines' => fn($q) => $q->withCount('runs')->orderBy('branch')]);
+        $project->load(['pipelines' => fn ($q) => $q->withCount('runs')->orderBy('branch')]);
 
         // This page is readable by viewers, who have no reason to hold the
         // webhook signing secret. Anyone who can actually configure the hook
@@ -83,7 +83,7 @@ class ProjectController extends Controller
                 'description' => $project->description,
                 'github_secret' => $maySeeSecret ? $project->github_secret : null,
             ],
-            'pipelines' => $project->pipelines->map(fn($p) => [
+            'pipelines' => $project->pipelines->map(fn ($p) => [
                 'id' => $p->id,
                 'branch' => $p->branch,
                 'enabled' => $p->enabled,
@@ -123,7 +123,7 @@ class ProjectController extends Controller
         $data['repo_full_name'] = $this->buildFullName($data['repo_owner'], $data['repo_name']);
 
         Validator::make($data, [
-            'repo_full_name' => 'unique:projects,repo_full_name,' . $project->id,
+            'repo_full_name' => 'unique:projects,repo_full_name,'.$project->id,
         ], [
             'repo_full_name.unique' => 'This repository is already configured.',
         ])->validate();
@@ -142,6 +142,6 @@ class ProjectController extends Controller
 
     private function buildFullName(string $owner, string $repo): string
     {
-        return trim($owner, '/') . '/' . trim($repo, '/');
+        return trim($owner, '/').'/'.trim($repo, '/');
     }
 }

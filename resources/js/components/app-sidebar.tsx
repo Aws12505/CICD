@@ -1,5 +1,14 @@
 import { Link } from '@inertiajs/react';
-import { LayoutGrid, ListChecks, Boxes, Server } from 'lucide-react';
+import {
+    Activity,
+    Boxes,
+    Building2,
+    Layers,
+    LayoutGrid,
+    ListChecks,
+    Rocket,
+    Server,
+} from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -42,6 +51,16 @@ const mainNavItems: NavItem[] = [
         title: 'Services',
         href: '/services',
         icon: Layers,
+    },
+    {
+        title: 'Releases',
+        href: '/releases',
+        icon: Rocket,
+    },
+    {
+        title: 'Operations',
+        href: '/operations',
+        icon: Activity,
     },
 ];
 
