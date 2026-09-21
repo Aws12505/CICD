@@ -1,5 +1,7 @@
 <?php
 
+use App\Models\Project;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -44,7 +46,21 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+/** A user holding exactly one control-plane role. */
+function actorWithRole(string $role): User
 {
-    // ..
+    return tap(User::factory()->create())->assignRole($role);
+}
+
+/** A project with a known webhook secret, for signature tests. */
+function aProject(string $secret = 'a-forty-character-secret-value-for-tests'): Project
+{
+    return Project::create([
+        'name' => 'Hiring',
+        'repo_owner' => 'RnD-Experts-Team',
+        'repo_name' => 'HiringPizza',
+        'repo_full_name' => 'RnD-Experts-Team/HiringPizza',
+        'description' => null,
+        'github_secret' => $secret,
+    ]);
 }

@@ -1,10 +1,11 @@
 import { Head, Link } from '@inertiajs/react';
 import { Copy, GitBranch, Pencil, Plus, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PlaceholderPattern } from '@/components/ui/placeholder-pattern';
+import { useAbilities } from '@/hooks/use-abilities';
 
 interface Project {
     id: number;
@@ -13,7 +14,8 @@ interface Project {
     repo_name: string;
     repo_full_name: string | null;
     description: string | null;
-    github_secret: string;
+    /** null when the viewer is not permitted to see the signing secret. */
+    github_secret: string | null;
 }
 
 interface PipelineRow {
@@ -31,6 +33,8 @@ export default function ProjectShow({
     project: Project;
     pipelines: PipelineRow[];
 }) {
+    const { manage: canManage } = useAbilities();
+
     const webhookUrl =
         typeof window === 'undefined'
             ? '/webhook/github'
@@ -73,11 +77,14 @@ export default function ProjectShow({
                             <Badge variant="secondary">
                                 {pipelines.length} pipelines
                             </Badge>
-                            <Button asChild variant="outline">
-                                <Link href={`/projects/${project.id}/edit`}>
-                                    <Settings2 className="size-4" /> Settings
-                                </Link>
-                            </Button>
+                            {canManage && (
+                                <Button asChild variant="outline">
+                                    <Link href={`/projects/${project.id}/edit`}>
+                                        <Settings2 className="size-4" />{' '}
+                                        Settings
+                                    </Link>
+                                </Button>
+                            )}
                         </div>
                     </CardContent>
                 </Card>
@@ -116,26 +123,33 @@ export default function ProjectShow({
                             <p className="text-xs text-muted-foreground">
                                 Secret
                             </p>
-                            <div className="flex gap-2">
-                                <input
-                                    value={project.github_secret}
-                                    readOnly
-                                    className="h-9 w-full rounded-md border border-input bg-background px-3 font-mono text-xs"
-                                />
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="icon"
-                                    onClick={() =>
-                                        copyValue(
-                                            project.github_secret,
-                                            'Webhook secret',
-                                        )
-                                    }
-                                >
-                                    <Copy className="size-4" />
-                                </Button>
-                            </div>
+                            {project.github_secret === null ? (
+                                <p className="text-xs text-muted-foreground italic">
+                                    Hidden — only an admin or operator can view
+                                    the signing secret.
+                                </p>
+                            ) : (
+                                <div className="flex gap-2">
+                                    <input
+                                        value={project.github_secret}
+                                        readOnly
+                                        className="h-9 w-full rounded-md border border-input bg-background px-3 font-mono text-xs"
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="icon"
+                                        onClick={() =>
+                                            copyValue(
+                                                project.github_secret ?? '',
+                                                'Webhook secret',
+                                            )
+                                        }
+                                    >
+                                        <Copy className="size-4" />
+                                    </Button>
+                                </div>
+                            )}
                         </div>
                         <p className="text-xs text-muted-foreground">
                             Use the same secret for every branch pipeline in
@@ -148,13 +162,15 @@ export default function ProjectShow({
                     <CardHeader className="border-b border-sidebar-border/70">
                         <div className="flex items-center justify-between">
                             <CardTitle>Pipelines (branches)</CardTitle>
-                            <Button asChild size="sm">
-                                <Link
-                                    href={`/projects/${project.id}/pipelines/create`}
-                                >
-                                    <Plus className="size-4" /> Add pipeline
-                                </Link>
-                            </Button>
+                            {canManage && (
+                                <Button asChild size="sm">
+                                    <Link
+                                        href={`/projects/${project.id}/pipelines/create`}
+                                    >
+                                        <Plus className="size-4" /> Add pipeline
+                                    </Link>
+                                </Button>
+                            )}
                         </div>
                     </CardHeader>
 
@@ -187,11 +203,20 @@ export default function ProjectShow({
                                             </div>
                                         </div>
                                     </div>
-                                    <Button asChild variant="ghost" size="sm">
-                                        <Link href={`/pipelines/${p.id}/edit`}>
-                                            <Pencil className="size-4" /> Edit
-                                        </Link>
-                                    </Button>
+                                    {canManage && (
+                                        <Button
+                                            asChild
+                                            variant="ghost"
+                                            size="sm"
+                                        >
+                                            <Link
+                                                href={`/pipelines/${p.id}/edit`}
+                                            >
+                                                <Pencil className="size-4" />{' '}
+                                                Edit
+                                            </Link>
+                                        </Button>
+                                    )}
                                 </div>
                             ))}
                         </div>

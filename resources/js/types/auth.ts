@@ -10,8 +10,25 @@ export type User = {
     [key: string]: unknown;
 };
 
+export type Role = 'admin' | 'operator' | 'viewer';
+
+/**
+ * What the signed-in user is allowed to do, shared on every page.
+ *
+ * Presentation only — hiding a control the user cannot use. The routes do the
+ * actual enforcing, so never treat these as security.
+ */
+export type Abilities = {
+    /** Create and edit projects and pipelines, and trigger runs. */
+    manage: boolean;
+    /** Delete projects and pipelines. */
+    destroy: boolean;
+};
+
 export type Auth = {
     user: User;
+    roles: Role[];
+    can: Abilities;
 };
 
 export type TwoFactorSetupData = {

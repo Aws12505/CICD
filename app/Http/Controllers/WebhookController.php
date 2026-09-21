@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Jobs\ExecutePipelineJob;
 use App\Models\Pipeline;
 use App\Models\PipelineRun;
+use App\Models\Project;
 use App\Services\GitHubSignatureService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -41,9 +42,41 @@ class WebhookController extends Controller
             return response()->json(['error' => 'Missing repository full name or branch'], 400);
         }
 
-        $pipeline = Pipeline::query()
-            ->with('project')
-            ->whereHas('project', fn($q) => $q->where('repo_full_name', $resolvedFullName))
+        /*
+         * Authenticate before looking anything else up.
+         *
+         * This used to find the pipeline first and answer with a descriptive
+         * 404 naming the repository and branch, which let an unauthenticated
+         * caller enumerate every repo and branch configured here. Every
+         * pre-signature failure below now returns the same opaque 404.
+         */
+        $project = Project::query()
+            ->where('repo_full_name', $resolvedFullName)
+            ->first();
+
+        if (!$project) {
+            Log::info('Webhook for unknown repository', ['repo' => $resolvedFullName]);
+
+            return $this->rejected();
+        }
+
+        $secret = $project->github_secret;
+
+        if (!$secret) {
+            Log::warning('Project has no webhook secret configured', ['project_id' => $project->id]);
+
+            return $this->rejected();
+        }
+
+        if (!$this->signatures->verify($secret, $request->getContent(), $request->header('X-Hub-Signature-256'))) {
+            Log::warning('Invalid webhook signature', ['project_id' => $project->id]);
+
+            return $this->rejected();
+        }
+
+        // Past this point the caller has proven it holds the signing secret,
+        // so specific errors are safe and worth returning.
+        $pipeline = $project->pipelines()
             ->where('branch', $branch)
             ->where('enabled', true)
             ->first();
@@ -56,22 +89,8 @@ class WebhookController extends Controller
             ], 404);
         }
 
-        $signature = $request->header('X-Hub-Signature-256');
-        $rawBody = $request->getContent();
-
-        $secret = $pipeline->project->getRawOriginal('github_secret');
-
-        if (!$secret) {
-            Log::warning('Missing project webhook secret', ['project_id' => $pipeline->project->id]);
-
-            return response()->json(['error' => 'Webhook secret not configured'], 422);
-        }
-
-        if (!$this->signatures->verify($secret, $rawBody, $signature)) {
-            Log::warning('Invalid webhook signature', ['pipeline_id' => $pipeline->id]);
-
-            return response()->json(['error' => 'Invalid signature'], 401);
-        }
+        // buildLogPath() reads through the project relation.
+        $pipeline->setRelation('project', $project);
 
         $head = data_get($payload, 'head_commit', []);
 
@@ -91,6 +110,15 @@ class WebhookController extends Controller
             'ok' => true,
             'run_id' => $run->id,
         ], 202);
+    }
+
+    /**
+     * One opaque response for "unknown repo", "no secret configured" and
+     * "bad signature", so none of them can be told apart from outside.
+     */
+    private function rejected(): JsonResponse
+    {
+        return response()->json(['error' => 'Not found'], 404);
     }
 
     private function buildLogPath(Pipeline $pipeline, string $branch): string

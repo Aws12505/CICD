@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\Roles;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -40,6 +41,15 @@ class HandleInertiaRequests extends Middleware
             'name' => config('app.name'),
             'auth' => [
                 'user' => $request->user(),
+                // Shared so the UI can hide controls the user cannot use.
+                // This is presentation only — the routes are what actually
+                // enforce access, and they do it regardless of what is sent
+                // here.
+                'roles' => $request->user()?->getRoleNames()->values()->all() ?? [],
+                'can' => [
+                    'manage' => (bool) $request->user()?->hasAnyRole([Roles::ADMIN, Roles::OPERATOR]),
+                    'destroy' => (bool) $request->user()?->hasRole(Roles::ADMIN),
+                ],
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];

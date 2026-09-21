@@ -6,6 +6,7 @@ import { RunStatusBadge } from '@/components/run-status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useAbilities } from '@/hooks/use-abilities';
 
 interface Run {
     id: number;
@@ -47,6 +48,8 @@ function fmtDuration(ms: number | null) {
 }
 
 export default function RunShow({ run, steps, log }: Props) {
+    const { manage: canManage } = useAbilities();
+
     const [liveStatus, setLiveStatus] = useState(run.status);
     const [liveSteps, setLiveSteps] = useState(steps);
     const [syncedRun, setSyncedRun] = useState(run.id);
@@ -105,12 +108,14 @@ export default function RunShow({ run, steps, log }: Props) {
                             {isLive && <Badge variant="secondary">live</Badge>}
                         </div>
                     </div>
-                    <Button
-                        variant="outline"
-                        onClick={() => router.post(`/runs/${run.id}/rerun`)}
-                    >
-                        <RotateCw className="size-4" /> Rerun
-                    </Button>
+                    {canManage && (
+                        <Button
+                            variant="outline"
+                            onClick={() => router.post(`/runs/${run.id}/rerun`)}
+                        >
+                            <RotateCw className="size-4" /> Rerun
+                        </Button>
+                    )}
                 </div>
 
                 <Card>

@@ -64,9 +64,14 @@ class ProjectController extends Controller
         return redirect()->route('projects.index')->with('success', 'Project created.');
     }
 
-    public function show(Project $project): Response
+    public function show(Request $request, Project $project): Response
     {
         $project->load(['pipelines' => fn($q) => $q->withCount('runs')->orderBy('branch')]);
+
+        // This page is readable by viewers, who have no reason to hold the
+        // webhook signing secret. Anyone who can actually configure the hook
+        // can reach the edit page, which still shows it.
+        $maySeeSecret = (bool) $request->user()?->hasAnyRole(['admin', 'operator']);
 
         return Inertia::render('projects/show', [
             'project' => [
@@ -76,7 +81,7 @@ class ProjectController extends Controller
                 'repo_name' => $project->repo_name,
                 'repo_full_name' => $project->repo_full_name,
                 'description' => $project->description,
-                'github_secret' => $project->getRawOriginal('github_secret'),
+                'github_secret' => $maySeeSecret ? $project->github_secret : null,
             ],
             'pipelines' => $project->pipelines->map(fn($p) => [
                 'id' => $p->id,
@@ -98,7 +103,9 @@ class ProjectController extends Controller
                 'repo_name' => $project->repo_name,
                 'repo_full_name' => $project->repo_full_name,
                 'description' => $project->description,
-                'github_secret' => $project->getRawOriginal('github_secret'),
+                // Decrypted by the model cast. Reachable only by admin|operator
+                // via the route middleware.
+                'github_secret' => $project->github_secret,
             ],
         ]);
     }

@@ -1,9 +1,10 @@
 import { Head, Link } from '@inertiajs/react';
 import { Boxes, Plus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { PlaceholderPattern } from '@/components/ui/placeholder-pattern';
+import { useAbilities } from '@/hooks/use-abilities';
 
 interface Project {
     id: number;
@@ -15,6 +16,8 @@ interface Project {
 }
 
 export default function ProjectsIndex({ projects }: { projects: Project[] }) {
+    const { manage: canManage } = useAbilities();
+
     const totalPipelines = projects.reduce(
         (sum, project) => sum + project.pipelines_count,
         0,
@@ -47,11 +50,13 @@ export default function ProjectsIndex({ projects }: { projects: Project[] }) {
                                 </Badge>
                             </div>
                         </div>
-                        <Button asChild>
-                            <Link href="/projects/create">
-                                <Plus className="size-4" /> New project
-                            </Link>
-                        </Button>
+                        {canManage && (
+                            <Button asChild>
+                                <Link href="/projects/create">
+                                    <Plus className="size-4" /> New project
+                                </Link>
+                            </Button>
+                        )}
                     </CardContent>
                 </Card>
 
@@ -59,14 +64,17 @@ export default function ProjectsIndex({ projects }: { projects: Project[] }) {
                     <Card className="flex flex-col items-center gap-3 p-12 text-center">
                         <Boxes className="size-10 text-muted-foreground" />
                         <p className="text-sm text-muted-foreground">
-                            No projects yet. Create your first one to start
-                            receiving webhooks.
+                            {canManage
+                                ? 'No projects yet. Create your first one to start receiving webhooks.'
+                                : 'No projects yet. Ask an operator to create one.'}
                         </p>
-                        <Button asChild>
-                            <Link href="/projects/create">
-                                <Plus className="size-4" /> New project
-                            </Link>
-                        </Button>
+                        {canManage && (
+                            <Button asChild>
+                                <Link href="/projects/create">
+                                    <Plus className="size-4" /> New project
+                                </Link>
+                            </Button>
+                        )}
                     </Card>
                 ) : (
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -144,7 +144,9 @@ return [
     */
 
     'features' => [
-        Features::registration(),
+        // Registration is deliberately absent. This app can run arbitrary shell
+        // as root on every server it manages, so accounts are created by an
+        // admin, never self-served.
         Features::resetPasswords(),
         Features::emailVerification(),
         Features::twoFactorAuthentication([
