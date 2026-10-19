@@ -179,6 +179,20 @@ export default function ClientShow({ client, services, stacks }: Props) {
                                     <Badge variant="secondary">
                                         {stack.status}
                                     </Badge>
+                                    <Link
+                                        href={`/stacks/${stack.id}/plan`}
+                                        className="text-sm text-primary hover:underline"
+                                    >
+                                        {stack.tier === 'live'
+                                            ? 'Promote'
+                                            : 'Update'}
+                                    </Link>
+                                    <Link
+                                        href={`/stacks/${stack.id}/backups`}
+                                        className="text-sm text-primary hover:underline"
+                                    >
+                                        Backups
+                                    </Link>
                                 </div>
                             </div>
                         </CardHeader>

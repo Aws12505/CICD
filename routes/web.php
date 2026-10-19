@@ -14,6 +14,7 @@ use App\Http\Controllers\RunController;
 use App\Http\Controllers\ServerController;
 use App\Http\Controllers\ServerOpsController;
 use App\Http\Controllers\ServiceController;
+use App\Http\Controllers\StackBackupController;
 use App\Http\Controllers\StackPlanController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TerminalController;
@@ -127,6 +128,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // operator work, one click each, and never automatic.
     Route::get('versions', [VersionsController::class, 'index'])->name('versions.index');
     Route::get('stacks/{stack}/plan', [StackPlanController::class, 'show'])->name('stacks.plan');
+    Route::get('stacks/{stack}/backups', [StackBackupController::class, 'index'])->name('stacks.backups');
 
     Route::middleware('role:admin|operator')->group(function () {
         Route::post('versions/update-testing', [VersionsController::class, 'updateTesting'])->name('versions.update-testing');
@@ -134,6 +136,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('clients/{client}/pin', [VersionsController::class, 'pin'])->name('clients.pin');
         Route::post('stacks/{stack}/releases', [StackPlanController::class, 'store'])->name('stacks.releases.store');
         Route::post('stacks/{stack}/build-for-live', [StackPlanController::class, 'buildForLive'])->name('stacks.build-for-live');
+        Route::post('stacks/{stack}/backups', [StackBackupController::class, 'store'])->name('stacks.backups.store');
     });
 
     Route::get('releases', [ReleaseController::class, 'index'])->name('releases.index');
@@ -151,6 +154,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware('role:admin')->group(function () {
         // Adopting rewrites what we believe should be deployed on the strength
         // of someone's judgement, so it sits with the destructive actions.
+        // A restore discards everything written since the backup.
+        Route::post('backups/{backup}/restore', [StackBackupController::class, 'restore'])->name('backups.restore');
         Route::post('drift/{observation}/adopt', [OperationsController::class, 'adopt'])->name('drift.adopt');
     });
 

@@ -77,14 +77,14 @@ class BackupService
      * @param  list<string>  $tables
      * @param  Closure(string):void|null  $log
      */
-    public function tables(Stack $stack, StackService $entitlement, array $tables, Target $target, ?int $releaseId = null, ?Closure $log = null): Backup
+    public function tables(Stack $stack, StackService $entitlement, array $tables, Target $target, ?int $releaseId = null, ?Closure $log = null, string $trigger = 'pre_release'): Backup
     {
         return $this->dumpDatabase(
             $stack,
             $entitlement,
             $stack->databaseFor($entitlement->service) ?? '',
             $target,
-            'pre_release',
+            $trigger,
             $tables,
             $releaseId,
             $log,
