@@ -54,6 +54,11 @@ class ServiceController extends Controller
                 'nats_publishes' => $service->nats_publishes ?? [],
                 'nats_consumes' => $service->nats_consumes ?? [],
                 'image_repository' => $service->imageRepository(),
+                'auth_service_name' => $service->auth_service_name,
+                'extra_databases' => $service->extra_databases ?? [],
+                'processes' => $service->processes ?? [],
+                'first_run_commands' => $service->first_run_commands ?? [],
+                'every_deploy_commands' => $service->every_deploy_commands ?? [],
             ],
             'definitions' => $service->envDefinitions->map(fn (ServiceEnvDefinition $d) => [
                 'id' => $d->id,
@@ -81,6 +86,39 @@ class ServiceController extends Controller
         $service->delete();
 
         return redirect()->route('services.index')->with('success', 'Service removed.');
+    }
+
+    /**
+     * How a service runs on a stack: its pizzasys name, its extra databases,
+     * the processes beside the web container, and the commands a deploy runs.
+     */
+    public function updateCatalog(Request $request, Service $service): RedirectResponse
+    {
+        $data = $request->validate([
+            'auth_service_name' => ['nullable', 'string', 'max:64'],
+            'extra_databases' => ['array'],
+            'extra_databases.*' => ['string', 'max:64', 'regex:/^[a-z0-9_]+$/'],
+            'processes' => ['array'],
+            'processes.*.name' => ['required', 'string', 'max:32', 'regex:/^[a-z0-9-]+$/', 'distinct'],
+            'processes.*.command' => ['required', 'string', 'max:500'],
+            'first_run_commands' => ['array'],
+            'first_run_commands.*' => ['string', 'max:500'],
+            'every_deploy_commands' => ['array'],
+            'every_deploy_commands.*' => ['string', 'max:500'],
+        ], [
+            'extra_databases.*.regex' => 'Database names are lowercase letters, digits and underscores.',
+            'processes.*.name.regex' => 'Process names are lowercase letters, digits and dashes.',
+        ]);
+
+        $service->update([
+            'auth_service_name' => $data['auth_service_name'] ?? null,
+            'extra_databases' => array_values($data['extra_databases'] ?? []),
+            'processes' => array_values($data['processes'] ?? []),
+            'first_run_commands' => array_values($data['first_run_commands'] ?? []),
+            'every_deploy_commands' => array_values($data['every_deploy_commands'] ?? []),
+        ]);
+
+        return back()->with('success', 'Saved. It takes effect on each client\'s next deploy.');
     }
 
     /** Add or replace one environment key on a service. */
@@ -152,7 +190,7 @@ class ServiceController extends Controller
         return [
             ServiceEnvDefinition::SOURCE_LITERAL => 'Typed in per stack',
             ServiceEnvDefinition::SOURCE_SECRET => 'Secret, typed in per stack',
-            ServiceEnvDefinition::SOURCE_GENERATED => 'Generated during provisioning',
+            ServiceEnvDefinition::SOURCE_GENERATED => 'Generated once per stack',
             ServiceEnvDefinition::SOURCE_SERVICE_URL => 'Another service\'s URL',
             ServiceEnvDefinition::SOURCE_STACK => 'Derived from the stack',
         ];

@@ -7,24 +7,34 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Config: the tier of client difference that takes effect immediately.
+ * An environment value for both tiers of one client.
  *
- * Read at runtime by the services themselves. Changing one of these is not a
- * release — no build, no deploy, no containers move. That is the whole point:
- * most of what a client asks for should land here.
+ * The layer under a stack's own values: a vendor credential, a feature flag
+ * or a label is usually the same on testing and live, so it is set once here
+ * and overridden per tier only where they differ. A null service_id applies
+ * to every service.
+ *
+ * No build and no release: saving and clicking Apply restarts the containers
+ * that read it. Encrypted whether or not it is marked secret, as stack values
+ * are.
  */
 class ClientSetting extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['client_id', 'service_id', 'key', 'value', 'description'];
+    protected $fillable = ['client_id', 'service_id', 'key', 'value', 'is_secret', 'description'];
+
+    protected $hidden = ['value'];
 
     /**
      * @return array<string, string>
      */
     protected function casts(): array
     {
-        return ['value' => 'array'];
+        return [
+            'value' => 'encrypted',
+            'is_secret' => 'boolean',
+        ];
     }
 
     public function client(): BelongsTo

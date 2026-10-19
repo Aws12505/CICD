@@ -79,11 +79,15 @@ class StackRenderer
             $lines[] = '    networks:';
             $lines[] = '      - shared';
 
-            if ($service->runsAWorker()) {
-                $lines[] = '  '.$service->slug.'_worker:';
+            foreach ($service->processList() as $process) {
+                $lines[] = '  '.$service->slug.'_'.$process['name'].':';
                 $lines[] = '    image: '.$this->imageReference($entitlement);
-                $lines[] = '    container_name: '.$entitlement->containerName().'_worker';
-                $lines[] = '    command: ["worker"]';
+                $lines[] = '    container_name: '.$entitlement->containerName().'_'.$process['name'];
+                // JSON is valid YAML, and quotes whatever the command holds.
+                $lines[] = '    command: '.json_encode(
+                    $process['command'] === null ? ['worker'] : ['sh', '-c', $process['command']],
+                    JSON_UNESCAPED_SLASHES,
+                );
                 $lines[] = '    env_file:';
                 $lines[] = '      - ./env/'.$service->slug.'.env';
                 $lines[] = '    volumes:';

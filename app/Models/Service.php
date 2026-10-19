@@ -32,6 +32,11 @@ class Service extends Model
         'dockerfile_path',
         'subdomain',
         'database_name',
+        'auth_service_name',
+        'extra_databases',
+        'processes',
+        'first_run_commands',
+        'every_deploy_commands',
         'health_path',
         'per_stack_build',
         'nats_publishes',
@@ -48,6 +53,10 @@ class Service extends Model
             'per_stack_build' => 'boolean',
             'nats_publishes' => 'array',
             'nats_consumes' => 'array',
+            'extra_databases' => 'array',
+            'processes' => 'array',
+            'first_run_commands' => 'array',
+            'every_deploy_commands' => 'array',
             'position' => 'integer',
         ];
     }
@@ -65,6 +74,44 @@ class Service extends Model
     public function runsAWorker(): bool
     {
         return $this->build_recipe === self::RECIPE_LARAVEL_WORKER;
+    }
+
+    /**
+     * Containers beside the web one, each from the same image.
+     *
+     * From the catalog's `processes` when set. A `laravel-worker` service
+     * without them keeps the single supervisord worker its image starts
+     * with the "worker" argument.
+     *
+     * @return list<array{name: string, command: string|null}>
+     */
+    public function processList(): array
+    {
+        $processes = collect($this->processes ?? [])
+            ->filter(fn ($p) => filled($p['name'] ?? null) && filled($p['command'] ?? null))
+            ->map(fn ($p) => ['name' => (string) $p['name'], 'command' => (string) $p['command']])
+            ->values()
+            ->all();
+
+        if ($processes === [] && $this->runsAWorker()) {
+            return [['name' => 'worker', 'command' => null]];
+        }
+
+        return $processes;
+    }
+
+    /**
+     * Every compose service this one becomes: the web container and one per
+     * process. A release swaps all of them together.
+     *
+     * @return list<string>
+     */
+    public function composeServices(): array
+    {
+        return [
+            $this->slug,
+            ...array_map(fn (array $p) => $this->slug.'_'.$p['name'], $this->processList()),
+        ];
     }
 
     /**

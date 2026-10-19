@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ClientController;
+use App\Http\Controllers\ClientEnvController;
 use App\Http\Controllers\ControlPlaneSettingsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\OperationsController;
@@ -89,7 +90,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::match(['put', 'patch'], 'clients/{client}', [ClientController::class, 'update'])->name('clients.update');
         Route::post('stacks/{stack}/entitlements', [ClientController::class, 'setEntitlement'])->name('stacks.entitlements');
 
+        // Environment values: vendor credentials and per-tier overrides.
+        // Secrets are write-only, but even the plain values are config a
+        // viewer has no need for.
+        Route::get('clients/{client}/env', [ClientEnvController::class, 'edit'])->name('clients.env.edit');
+        Route::put('clients/{client}/env', [ClientEnvController::class, 'update'])->name('clients.env.update');
+        Route::post('stacks/{stack}/apply', [ClientEnvController::class, 'apply'])->name('stacks.apply');
+
         Route::match(['put', 'patch'], 'services/{service}', [ServiceController::class, 'update'])->name('services.update');
+        Route::put('services/{service}/catalog', [ServiceController::class, 'updateCatalog'])->name('services.catalog.update');
         Route::post('services/{service}/env', [ServiceController::class, 'storeDefinition'])->name('services.env.store');
         Route::delete('services/{service}/env/{definition}', [ServiceController::class, 'destroyDefinition'])->name('services.env.destroy');
     });

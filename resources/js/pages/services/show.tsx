@@ -2,7 +2,8 @@ import { Head, router, useForm } from '@inertiajs/react';
 import { Trash2 } from 'lucide-react';
 import type { FormEventHandler } from 'react';
 import InputError from '@/components/input-error';
-import { useAbilities } from '@/hooks/use-abilities';
+import { ServiceCatalogForm } from '@/components/service-catalog-form';
+import type { ServiceCatalog } from '@/components/service-catalog-form';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,16 +17,18 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { useAbilities } from '@/hooks/use-abilities';
 import type { EnvDefinition, ServiceRow } from '@/types/topology';
 
-type ServiceDetail = ServiceRow & {
-    repo_full_name: string;
-    default_branch: string;
-    dockerfile_path: string | null;
-    database_name: string | null;
-    health_path: string;
-    image_repository: string;
-};
+type ServiceDetail = ServiceRow &
+    ServiceCatalog & {
+        repo_full_name: string;
+        default_branch: string;
+        dockerfile_path: string | null;
+        database_name: string | null;
+        health_path: string;
+        image_repository: string;
+    };
 
 type Props = {
     service: ServiceDetail;
@@ -73,6 +76,12 @@ export default function ServiceShow({ service, definitions, sources }: Props) {
                         {service.image_repository}
                     </p>
                 </div>
+
+                <ServiceCatalogForm
+                    slug={service.slug}
+                    catalog={service}
+                    canManage={canManage}
+                />
 
                 <Card>
                     <CardHeader className="border-b border-sidebar-border/70">
@@ -208,7 +217,7 @@ export default function ServiceShow({ service, definitions, sources }: Props) {
                                                 e.target.value,
                                             )
                                         }
-                                        placeholder="auth:/api/v1 · database · app_url · redis_index"
+                                        placeholder="auth:/api/v1 · database · db_password · app_key · service_token"
                                     />
                                     <p className="text-xs text-muted-foreground">
                                         For a derived source this names what to

@@ -180,7 +180,9 @@ class ReleaseRunner
         $steps = [
             'pull' => $compose.' pull '.Shell::quote($service->slug),
             'migrate' => $this->migrateCommand($item, $compose),
-            'swap' => $compose.' up -d --no-deps '.Shell::quote($service->slug),
+            // The web container and its process containers share one image,
+            // so they move together.
+            'swap' => $compose.' up -d --no-deps '.Shell::join($service->composeServices()),
         ];
 
         foreach (array_filter($steps) as $name => $command) {

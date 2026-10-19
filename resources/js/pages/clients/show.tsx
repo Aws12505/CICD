@@ -1,9 +1,10 @@
-import { Head, router } from '@inertiajs/react';
-import { AlertTriangle } from 'lucide-react';
-import { useAbilities } from '@/hooks/use-abilities';
+import { Head, Link, router } from '@inertiajs/react';
+import { AlertTriangle, SlidersHorizontal } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
+import { useAbilities } from '@/hooks/use-abilities';
 import type {
     ClientRow,
     Entitlement,
@@ -84,18 +85,30 @@ export default function ClientShow({ client, services, stacks }: Props) {
         <>
             <Head title={client.name} />
             <div className="flex h-full flex-1 flex-col gap-6 p-4">
-                <div>
-                    <div className="flex items-center gap-3">
-                        <h1 className="font-display text-3xl font-semibold">
-                            {client.name}
-                        </h1>
-                        {client.status !== 'active' && (
-                            <Badge variant="destructive">{client.status}</Badge>
-                        )}
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <div className="flex items-center gap-3">
+                            <h1 className="font-display text-3xl font-semibold">
+                                {client.name}
+                            </h1>
+                            {client.status !== 'active' && (
+                                <Badge variant="destructive">
+                                    {client.status}
+                                </Badge>
+                            )}
+                        </div>
+                        <p className="mt-1 font-mono text-sm text-muted-foreground">
+                            {client.domain}
+                        </p>
                     </div>
-                    <p className="mt-1 font-mono text-sm text-muted-foreground">
-                        {client.domain}
-                    </p>
+                    {canManage && (
+                        <Button asChild variant="outline">
+                            <Link href={`/clients/${client.slug}/env`}>
+                                <SlidersHorizontal className="size-4" />{' '}
+                                Environment
+                            </Link>
+                        </Button>
+                    )}
                 </div>
 
                 <p className="text-sm text-muted-foreground">
