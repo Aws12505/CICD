@@ -1,5 +1,6 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { AlertTriangle, SlidersHorizontal } from 'lucide-react';
+import { AlertTriangle, Eye, SlidersHorizontal } from 'lucide-react';
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,7 +14,10 @@ import type {
 } from '@/types/topology';
 
 type Props = {
-    client: Omit<ClientRow, 'stacks'> & { notes: string | null };
+    client: Omit<ClientRow, 'stacks'> & {
+        notes: string | null;
+        admin_email: string | null;
+    };
     services: Pick<ServiceRow, 'id' | 'name' | 'slug' | 'subdomain'>[];
     stacks: StackDetail[];
 };
@@ -78,8 +82,50 @@ function EntitlementRow({
     );
 }
 
+function FirstAdmin({ slug, email }: { slug: string; email: string }) {
+    const [passwords, setPasswords] = useState<Record<
+        string,
+        string | null
+    > | null>(null);
+
+    const reveal = () => {
+        void fetch(`/clients/${slug}/admin-password`, {
+            headers: { Accept: 'application/json' },
+        })
+            .then((r) => r.json())
+            .then(setPasswords);
+    };
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>First admin</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-2 text-sm">
+                <p>
+                    <span className="font-mono">{email}</span>, created on each
+                    tier's first deploy.
+                </p>
+                {passwords ? (
+                    Object.entries(passwords).map(([tier, password]) => (
+                        <p key={tier} className="font-mono text-xs">
+                            {tier}: {password ?? 'not created yet'}
+                        </p>
+                    ))
+                ) : (
+                    <div>
+                        <Button variant="outline" size="sm" onClick={reveal}>
+                            <Eye className="size-4" /> Show passwords
+                        </Button>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
 export default function ClientShow({ client, services, stacks }: Props) {
-    const { manage: canManage } = useAbilities();
+    const { manage: canManage, destroy: isAdmin } = useAbilities();
 
     return (
         <>
@@ -158,6 +204,10 @@ export default function ClientShow({ client, services, stacks }: Props) {
                         </CardContent>
                     </Card>
                 ))}
+
+                {isAdmin && client.admin_email && (
+                    <FirstAdmin slug={client.slug} email={client.admin_email} />
+                )}
 
                 {client.notes && (
                     <Card>

@@ -9,6 +9,7 @@ use App\Models\Stack;
 use App\Models\StackService;
 use App\Services\Stack\EnvResolver;
 use App\Services\Stack\PortAllocator;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -57,8 +58,12 @@ class ClientController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'slug' => ['required', 'string', 'max:64', 'alpha_dash', 'unique:clients,slug'],
+            // Becomes the stacks' compose projects and their MySQL and Redis
+            // user names ("acme_testing"), which MySQL caps at 32 characters.
+            'slug' => ['required', 'string', 'max:24', 'regex:/^[a-z0-9][a-z0-9-]*$/', 'unique:clients,slug'],
             'domain' => ['required', 'string', 'max:255'],
+            'admin_email' => ['nullable', 'email', 'max:255'],
+            'admin_name' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string'],
             'server_id' => ['required', 'exists:servers,id'],
             // Both tiers land on one server today. This exists so moving
@@ -70,6 +75,8 @@ class ClientController extends Controller
             'name' => $data['name'],
             'slug' => $data['slug'],
             'domain' => $data['domain'],
+            'admin_email' => $data['admin_email'] ?? null,
+            'admin_name' => $data['admin_name'] ?? null,
             'notes' => $data['notes'] ?? null,
             'status' => 'active',
         ]);
@@ -104,6 +111,7 @@ class ClientController extends Controller
                 'domain' => $client->domain,
                 'status' => $client->status,
                 'notes' => $client->notes,
+                'admin_email' => $client->admin_email,
             ],
             'services' => $services->map(fn (Service $s) => [
                 'id' => $s->id,
@@ -176,6 +184,8 @@ class ClientController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'domain' => ['required', 'string', 'max:255'],
+            'admin_email' => ['nullable', 'email', 'max:255'],
+            'admin_name' => ['nullable', 'string', 'max:255'],
             'status' => ['required', Rule::in(['active', 'suspended'])],
             'notes' => ['nullable', 'string'],
         ]);
@@ -190,6 +200,20 @@ class ClientController extends Controller
         $client->delete();
 
         return redirect()->route('clients.index')->with('success', 'Client removed from the control plane.');
+    }
+
+    /**
+     * The generated password of the client's first admin, per tier. Admins
+     * only; it exists so the first login can happen, and the client is
+     * expected to change it.
+     */
+    public function adminPassword(Client $client): JsonResponse
+    {
+        return response()->json(
+            $client->stacks()->get()->mapWithKeys(fn (Stack $stack) => [
+                $stack->tier => $stack->hasSecret('admin_password') ? $stack->secret('admin_password') : null,
+            ]),
+        );
     }
 
     /** Suggest a slug from a name, so the two do not drift apart by hand. */

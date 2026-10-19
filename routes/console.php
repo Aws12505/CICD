@@ -61,3 +61,17 @@ Schedule::command('stacks:poll-drift')
     ->everyFiveMinutes()
     ->withoutOverlapping()
     ->appendOutputTo(storage_path('logs/drift.log'));
+
+/*
+|--------------------------------------------------------------------------
+| Releases
+|--------------------------------------------------------------------------
+|
+| A destructive release waits for the window agreed with the client, then
+| starts on its own. Nothing else ever deploys without a click.
+|
+*/
+
+Schedule::command('releases:run-due')
+    ->everyMinute()
+    ->withoutOverlapping();

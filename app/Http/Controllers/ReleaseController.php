@@ -2,30 +2,28 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\ReleaseJob;
 use App\Models\Release;
 use App\Models\ReleaseItem;
 use App\Models\Stack;
 use App\Services\Release\ReleasePlanner;
-use App\Services\Release\ReleaseRunner;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 use RuntimeException;
-use Throwable;
 
 class ReleaseController extends Controller
 {
     public function __construct(
         private readonly ReleasePlanner $planner,
-        private readonly ReleaseRunner $runner,
     ) {}
 
     public function index(): Response
     {
         return Inertia::render('releases/index', [
             'releases' => Release::query()
-                ->with('stack.client', 'items')
+                ->with('stack.client', 'items.service')
                 ->latest()
                 ->limit(50)
                 ->get()
@@ -35,7 +33,7 @@ class ReleaseController extends Controller
 
     public function show(Release $release): Response
     {
-        $release->load('stack.client', 'items.service', 'items.build', 'creator', 'sourceRelease');
+        $release->load('stack.client', 'items.service', 'items.build.service', 'creator', 'sourceRelease', 'task');
 
         return Inertia::render('releases/show', [
             'release' => $this->summarise($release) + [
@@ -45,10 +43,14 @@ class ReleaseController extends Controller
                 'window_started_at' => $release->window_started_at?->toIso8601String(),
                 'window_ended_at' => $release->window_ended_at?->toIso8601String(),
                 'affected_tables' => $release->affectedTables(),
+                'source_release_id' => $release->source_release_id,
             ],
+            'task' => $release->task ? TaskController::summarise($release->task) : null,
+            'log' => $release->task?->contents() ?? '',
             'items' => $release->items->map(fn (ReleaseItem $item) => [
                 'id' => $item->id,
                 'service' => $item->service->name,
+                'build' => $item->build?->label(),
                 'slug' => $item->service->slug,
                 'from_digest' => $item->from_digest,
                 'to_digest' => $item->to_digest,
@@ -103,8 +105,12 @@ class ReleaseController extends Controller
             return back()->with('error', 'That release recorded nothing to go back to.');
         }
 
+        // One click: the digests are known-good by definition, and nothing is
+        // migrated backwards. Restoring a dump stays a separate decision.
+        ReleaseJob::launch($rollback, $request->user());
+
         return redirect()->route('releases.show', $rollback)
-            ->with('success', 'Rollback planned. Restoring a database dump is a separate decision.');
+            ->with('success', 'Rolling back. Restoring a database dump is a separate decision.');
     }
 
     /** Agree a window for a destructive release. */
@@ -119,32 +125,22 @@ class ReleaseController extends Controller
         return back()->with('success', 'Window agreed.');
     }
 
+    /** Run a planned release now. Its log streams on the release page. */
     public function run(Request $request, Release $release): RedirectResponse
     {
-        if (in_array($release->status, ['running', 'succeeded'], true)) {
-            return back()->with('error', 'That release has already run.');
+        if ($release->task_id !== null || in_array($release->status, ['running', 'succeeded', 'failed'], true)) {
+            return back()->with('error', 'That release has already been started.');
         }
 
-        try {
-            $this->runner->run($release);
-        } catch (Throwable $e) {
-            report($e);
+        $release->load('items.build');
 
-            return back()->with('error', 'The release failed to start: '.$e->getMessage());
+        if ($release->needsWindow() && $release->scheduled_for === null) {
+            return back()->with('error', 'Agree a window with the client first.');
         }
 
-        $release->refresh();
+        ReleaseJob::launch($release, $request->user());
 
-        // An emergency skipped testing, so testing is now behind. Queuing the
-        // catch-up automatically is what stops the tiers diverging quietly.
-        if ($release->isEmergency() && $release->status === 'succeeded') {
-            $this->planner->emergencyFollowUp($release, $request->user());
-        }
-
-        return back()->with(
-            $release->status === 'succeeded' ? 'success' : 'error',
-            $release->status === 'succeeded' ? 'Release succeeded.' : 'Release failed — see the items below.',
-        );
+        return back();
     }
 
     /**
@@ -160,6 +156,8 @@ class ReleaseController extends Controller
             'tier' => $release->stack->tier,
             'stack_id' => $release->stack_id,
             'items_count' => $release->items->count(),
+            'services' => $release->items->map(fn (ReleaseItem $i) => $i->service?->name)->filter()->values(),
+            'scheduled_for' => $release->scheduled_for?->toIso8601String(),
             'needs_window' => $release->needsWindow(),
             'created_at' => $release->created_at?->toIso8601String(),
             'finished_at' => $release->finished_at?->toIso8601String(),

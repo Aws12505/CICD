@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Build;
 use App\Models\Service;
 use App\Models\ServiceEnvDefinition;
 use Illuminate\Http\RedirectResponse;
@@ -55,6 +56,7 @@ class ServiceController extends Controller
                 'nats_consumes' => $service->nats_consumes ?? [],
                 'image_repository' => $service->imageRepository(),
                 'auth_service_name' => $service->auth_service_name,
+                'identity_provider' => $service->identity_provider,
                 'extra_databases' => $service->extra_databases ?? [],
                 'processes' => $service->processes ?? [],
                 'first_run_commands' => $service->first_run_commands ?? [],
@@ -71,6 +73,25 @@ class ServiceController extends Controller
             ]),
             'recipes' => $this->recipes(),
             'sources' => $this->sources(),
+            // Every edition anyone runs or has built, with who runs it.
+            'editions' => Build::query()
+                ->where('service_id', $service->id)
+                ->whereNotNull('edition')
+                ->distinct()
+                ->pluck('edition')
+                ->mapWithKeys(fn ($e) => [$e => ['name' => $e, 'clients' => []]])
+                // Editions clients run win, carrying who runs them.
+                ->merge($service->stackServices()
+                    ->whereNotNull('edition')
+                    ->with('stack.client')
+                    ->get()
+                    ->groupBy('edition')
+                    ->map(fn ($rows, $edition) => [
+                        'name' => $edition,
+                        'clients' => $rows->map(fn ($s) => $s->stack->client->name)->unique()->values(),
+                    ]))
+                ->sortKeys()
+                ->values(),
         ]);
     }
 
@@ -96,6 +117,7 @@ class ServiceController extends Controller
     {
         $data = $request->validate([
             'auth_service_name' => ['nullable', 'string', 'max:64'],
+            'identity_provider' => ['boolean'],
             'extra_databases' => ['array'],
             'extra_databases.*' => ['string', 'max:64', 'regex:/^[a-z0-9_]+$/'],
             'processes' => ['array'],
@@ -112,6 +134,7 @@ class ServiceController extends Controller
 
         $service->update([
             'auth_service_name' => $data['auth_service_name'] ?? null,
+            'identity_provider' => (bool) ($data['identity_provider'] ?? false),
             'extra_databases' => array_values($data['extra_databases'] ?? []),
             'processes' => array_values($data['processes'] ?? []),
             'first_run_commands' => array_values($data['first_run_commands'] ?? []),

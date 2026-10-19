@@ -1,13 +1,16 @@
 import { Head, router } from '@inertiajs/react';
 import { AlertTriangle, Play, Undo2 } from 'lucide-react';
+import { TaskPanel } from '@/components/task-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAbilities } from '@/hooks/use-abilities';
+import type { TaskSummary } from '@/types/task';
 
 type Item = {
     id: number;
     service: string;
+    build: string | null;
     slug: string;
     from_digest: string | null;
     to_digest: string | null;
@@ -39,12 +42,17 @@ const shorten = (digest: string | null) =>
 export default function ReleaseShow({
     release,
     items,
+    task,
+    log,
 }: {
     release: ReleaseDetail;
     items: Item[];
+    task: TaskSummary | null;
+    log: string;
 }) {
     const { manage: canManage } = useAbilities();
     const finished = ['succeeded', 'failed'].includes(release.status);
+    const started = task !== null;
     const blockedOnWindow = release.needs_window && !release.scheduled_for;
 
     return (
@@ -86,7 +94,7 @@ export default function ReleaseShow({
                     </div>
                     {canManage && (
                         <div className="flex flex-wrap gap-2">
-                            {!finished && (
+                            {!finished && !started && (
                                 <Button
                                     disabled={blockedOnWindow}
                                     onClick={() =>
@@ -102,12 +110,15 @@ export default function ReleaseShow({
                                 <Button
                                     variant="outline"
                                     onClick={() =>
+                                        confirm(
+                                            'Put back what ran before this release? Databases are not touched.',
+                                        ) &&
                                         router.post(
                                             `/releases/${release.id}/rollback`,
                                         )
                                     }
                                 >
-                                    <Undo2 className="size-4" /> Plan rollback
+                                    <Undo2 className="size-4" /> Roll back
                                 </Button>
                             )}
                         </div>
@@ -153,6 +164,21 @@ export default function ReleaseShow({
                     </Card>
                 )}
 
+                {task && (
+                    <Card>
+                        <CardHeader className="border-b border-sidebar-border/70">
+                            <CardTitle>Log</CardTitle>
+                        </CardHeader>
+                        <CardContent className="pt-6">
+                            <TaskPanel
+                                taskId={task.id}
+                                status={task.status}
+                                log={log}
+                            />
+                        </CardContent>
+                    </Card>
+                )}
+
                 <Card>
                     <CardHeader className="border-b border-sidebar-border/70">
                         <CardTitle>Services</CardTitle>
@@ -164,7 +190,7 @@ export default function ReleaseShow({
                                     <div className="flex flex-wrap items-center justify-between gap-3">
                                         <div className="flex flex-wrap items-center gap-2">
                                             <span className="font-medium">
-                                                {item.service}
+                                                {item.build ?? item.service}
                                             </span>
                                             {item.migration_kind ===
                                                 'destructive' && (

@@ -5,6 +5,7 @@ use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ClientEnvController;
 use App\Http\Controllers\ControlPlaneSettingsController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\EditionController;
 use App\Http\Controllers\OperationsController;
 use App\Http\Controllers\PipelineController;
 use App\Http\Controllers\ProjectController;
@@ -12,7 +13,9 @@ use App\Http\Controllers\ReleaseController;
 use App\Http\Controllers\RunController;
 use App\Http\Controllers\ServerController;
 use App\Http\Controllers\ServiceController;
+use App\Http\Controllers\StackPlanController;
 use App\Http\Controllers\TaskController;
+use App\Http\Controllers\VersionsController;
 use Illuminate\Support\Facades\Route;
 
 // Route::redirect rather than a closure: closures cannot be route-cached, and
@@ -100,6 +103,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::match(['put', 'patch'], 'services/{service}', [ServiceController::class, 'update'])->name('services.update');
         Route::put('services/{service}/catalog', [ServiceController::class, 'updateCatalog'])->name('services.catalog.update');
+        Route::post('services/{service}/editions/{edition}/sync', [EditionController::class, 'sync'])->name('services.editions.sync');
         Route::post('services/{service}/env', [ServiceController::class, 'storeDefinition'])->name('services.env.store');
         Route::delete('services/{service}/env/{definition}', [ServiceController::class, 'destroyDefinition'])->name('services.env.destroy');
     });
@@ -116,6 +120,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // deploys anything.
     Route::get('builds', [BuildController::class, 'index'])->name('builds.index');
     Route::post('builds', [BuildController::class, 'store'])->middleware('role:admin|operator')->name('builds.store');
+
+    // The Versions board: what every client runs. Updating and promoting are
+    // operator work, one click each, and never automatic.
+    Route::get('versions', [VersionsController::class, 'index'])->name('versions.index');
+    Route::get('stacks/{stack}/plan', [StackPlanController::class, 'show'])->name('stacks.plan');
+
+    Route::middleware('role:admin|operator')->group(function () {
+        Route::post('versions/update-testing', [VersionsController::class, 'updateTesting'])->name('versions.update-testing');
+        Route::post('versions/promote', [VersionsController::class, 'promote'])->name('versions.promote');
+        Route::post('clients/{client}/pin', [VersionsController::class, 'pin'])->name('clients.pin');
+        Route::post('stacks/{stack}/releases', [StackPlanController::class, 'store'])->name('stacks.releases.store');
+        Route::post('stacks/{stack}/build-for-live', [StackPlanController::class, 'buildForLive'])->name('stacks.build-for-live');
+    });
 
     Route::get('releases', [ReleaseController::class, 'index'])->name('releases.index');
     Route::get('releases/{release}', [ReleaseController::class, 'show'])->name('releases.show');
@@ -155,6 +172,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('servers/{server}/rescan', [ServerController::class, 'rescan'])->name('servers.rescan');
         Route::post('servers/{server}/regenerate-key', [ServerController::class, 'regenerateKey'])->name('servers.regenerate-key');
         Route::post('servers/{server}/provision', [ServerController::class, 'provision'])->name('servers.provision');
+        Route::get('clients/{client}/admin-password', [ClientController::class, 'adminPassword'])->name('clients.admin-password');
 
         // GitHub and registry tokens, the certificate email: credentials that
         // reach every client.

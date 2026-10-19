@@ -1,10 +1,10 @@
 import { Head, Link } from '@inertiajs/react';
 import { Building2, Plus } from 'lucide-react';
-import { useAbilities } from '@/hooks/use-abilities';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { PlaceholderPattern } from '@/components/ui/placeholder-pattern';
+import { useAbilities } from '@/hooks/use-abilities';
 import type { ClientRow } from '@/types/topology';
 
 export default function ClientsIndex({ clients }: { clients: ClientRow[] }) {

@@ -220,6 +220,7 @@ test('files() returns everything the stack needs, keyed by path', function () {
         'docker-compose.yml',
         'env/hiring.env',
         'nginx/hiring.acme.cloud.conf',
+        'nginx/hiring.acme.cloud.http',
     ]);
 });
 

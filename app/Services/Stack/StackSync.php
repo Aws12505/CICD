@@ -57,11 +57,19 @@ class StackSync
         $target ??= $stack->server->target();
         $root = $this->renderer->rootPath($stack);
 
+        // Each domain has a TLS vhost (.conf) and a plain one (.http). The TLS
+        // one cannot load before its certificate exists, so the plain one
+        // stands in until then.
         $script = <<<SH
         set -e
         for conf in {$root}/nginx/*.conf; do
           [ -e "\$conf" ] || continue
-          ln -sfn "\$conf" "/etc/nginx/sites-enabled/\$(basename "\$conf")"
+          domain="\$(basename "\$conf" .conf)"
+          if [ -f "/etc/letsencrypt/live/\$domain/fullchain.pem" ]; then
+            ln -sfn "\$conf" "/etc/nginx/sites-enabled/\$domain.conf"
+          else
+            ln -sfn "{$root}/nginx/\$domain.http" "/etc/nginx/sites-enabled/\$domain.conf"
+          fi
         done
         # Refuse to reload a broken config: nginx keeps serving the old one,
         # but only if we never told it to load the new one.

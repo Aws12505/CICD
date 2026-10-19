@@ -85,7 +85,15 @@ fi
 step "nginx"
 rm -f /etc/nginx/sites-enabled/default
 # Long hostnames like hiringtesting.client-domain.cloud overflow the default.
-echo 'server_names_hash_bucket_size 128;' > /etc/nginx/conf.d/00-control-plane.conf
+cat > /etc/nginx/conf.d/00-control-plane.conf <<'NGINX'
+server_names_hash_bucket_size 128;
+
+# WebSockets (Reverb) through the generated vhosts.
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+NGINX
 nginx -t
 systemctl enable --now nginx >/dev/null
 systemctl reload nginx

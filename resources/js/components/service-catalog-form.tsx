@@ -5,10 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 
 export type ServiceCatalog = {
     auth_service_name: string | null;
+    identity_provider: boolean;
     extra_databases: string[];
     processes: { name: string; command: string }[];
     first_run_commands: string[];
@@ -36,6 +38,7 @@ export function ServiceCatalogForm({
 }) {
     const form = useForm({
         auth_service_name: catalog.auth_service_name ?? '',
+        identity_provider: catalog.identity_provider,
         extra_databases: catalog.extra_databases.join(', '),
         processes: catalog.processes
             .map((p) => `${p.name}: ${p.command}`)
@@ -48,6 +51,7 @@ export function ServiceCatalogForm({
         e.preventDefault();
         form.transform((data) => ({
             auth_service_name: data.auth_service_name || null,
+            identity_provider: data.identity_provider,
             extra_databases: data.extra_databases
                 .split(',')
                 .map((d) => d.trim())
@@ -103,6 +107,20 @@ export function ServiceCatalogForm({
                             <InputError
                                 message={form.errors.auth_service_name}
                             />
+                            <label className="mt-1 flex items-center gap-2 text-sm">
+                                <Switch
+                                    disabled={!canManage}
+                                    checked={form.data.identity_provider}
+                                    onCheckedChange={(v) =>
+                                        form.setData('identity_provider', v)
+                                    }
+                                />
+                                This is the identity provider (pizzasys)
+                            </label>
+                            <p className="text-xs text-muted-foreground">
+                                Deployed first; registers every other service as
+                                a client and creates the first admin.
+                            </p>
                         </div>
                         <div className="grid gap-2">
                             <Label htmlFor="extra_databases">

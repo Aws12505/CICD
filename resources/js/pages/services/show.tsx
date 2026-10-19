@@ -34,9 +34,15 @@ type Props = {
     service: ServiceDetail;
     definitions: EnvDefinition[];
     sources: Record<string, string>;
+    editions: { name: string; clients: string[] }[];
 };
 
-export default function ServiceShow({ service, definitions, sources }: Props) {
+export default function ServiceShow({
+    service,
+    definitions,
+    sources,
+    editions,
+}: Props) {
     const { manage: canManage } = useAbilities();
 
     const form = useForm({
@@ -82,6 +88,53 @@ export default function ServiceShow({ service, definitions, sources }: Props) {
                     catalog={service}
                     canManage={canManage}
                 />
+
+                {editions.length > 0 && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Editions</CardTitle>
+                        </CardHeader>
+                        <CardContent className="grid gap-3">
+                            <p className="text-xs text-muted-foreground">
+                                Sync merges {service.default_branch} into the
+                                edition, one way only. A conflict opens a pull
+                                request on the edition instead.
+                            </p>
+                            {editions.map((edition) => (
+                                <div
+                                    key={edition.name}
+                                    className="flex flex-wrap items-center justify-between gap-3"
+                                >
+                                    <div>
+                                        <span className="font-mono text-sm">
+                                            edition/{edition.name}
+                                        </span>
+                                        <span className="ml-2 text-xs text-muted-foreground">
+                                            {edition.clients.length
+                                                ? edition.clients.join(', ')
+                                                : 'no client runs it'}
+                                        </span>
+                                    </div>
+                                    {canManage && (
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() =>
+                                                router.post(
+                                                    `/services/${service.slug}/editions/${edition.name}/sync`,
+                                                    {},
+                                                    { preserveScroll: true },
+                                                )
+                                            }
+                                        >
+                                            Sync with {service.default_branch}
+                                        </Button>
+                                    )}
+                                </div>
+                            ))}
+                        </CardContent>
+                    </Card>
+                )}
 
                 <Card>
                     <CardHeader className="border-b border-sidebar-border/70">

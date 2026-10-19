@@ -27,6 +27,7 @@ class StackService extends Model
         'desired_digest',
         'state',
         'last_deployed_at',
+        'initialized_at',
     ];
 
     /**
@@ -38,6 +39,7 @@ class StackService extends Model
             'enabled' => 'boolean',
             'host_port' => 'integer',
             'last_deployed_at' => 'datetime',
+            'initialized_at' => 'datetime',
         ];
     }
 

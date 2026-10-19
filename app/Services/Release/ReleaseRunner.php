@@ -5,15 +5,21 @@ namespace App\Services\Release;
 use App\Contracts\Target;
 use App\Models\Release;
 use App\Models\ReleaseItem;
+use App\Models\Service;
+use App\Models\Stack;
 use App\Models\StackService;
 use App\Services\Backup\BackupService;
+use App\Services\GitHub\GitHub;
+use App\Services\Provision\StackProvisioner;
 use App\Services\Remote\CommandRunner;
+use App\Services\Stack\CertificateIssuer;
 use App\Services\Stack\EnvResolver;
 use App\Services\Stack\StackRenderer;
 use App\Services\Stack\StackSync;
 use App\Support\Shell;
 use Closure;
 use RuntimeException;
+use Throwable;
 
 /**
  * Applies a release to a stack.
@@ -22,6 +28,12 @@ use RuntimeException;
  * stack keeps serving. The window path is for destructive migrations: the
  * client has agreed a time, a maintenance page goes up, only the affected
  * tables are dumped, and the migration runs unconstrained.
+ *
+ * Around the swaps, every release also makes the stack whole: databases,
+ * users and NATS streams for whatever is enabled, a service's first-run and
+ * every-deploy commands, the identity provider's service clients and first
+ * admin, and certificates. All of it is idempotent, so the first deploy of a
+ * client and the hundredth run the same code.
  */
 class ReleaseRunner
 {
@@ -31,6 +43,9 @@ class ReleaseRunner
         private readonly StackRenderer $renderer,
         private readonly EnvResolver $env,
         private readonly BackupService $backups,
+        private readonly StackProvisioner $provisioner,
+        private readonly CertificateIssuer $certificates,
+        private readonly GitHub $github,
     ) {}
 
     /**
@@ -40,7 +55,6 @@ class ReleaseRunner
     {
         $release->load('items.service', 'items.build', 'stack.server', 'stack.client');
 
-        $target ??= $release->stack->server->target();
         $log = $onOutput ?? fn (string $line) => null;
 
         try {
@@ -52,6 +66,8 @@ class ReleaseRunner
             return $release;
         }
 
+        $target ??= $release->stack->server->target();
+
         $release->update(['status' => 'running', 'started_at' => now()]);
 
         // Intent is recorded before anything moves, so a crash mid-release
@@ -59,9 +75,18 @@ class ReleaseRunner
         $this->recordIntent($release);
 
         $window = $release->needsWindow();
+        $stack = $release->stack;
 
         try {
-            $pushFailure = $this->sync->push($release->stack, $target);
+            $log("\n==> Databases, users and streams\n");
+
+            if ($failure = $this->provisioner->prepare($stack, $target, $log)) {
+                return $this->fail($release, $failure, $log);
+            }
+
+            // Rendered after recordIntent, so the compose file already names
+            // the images this release is moving to.
+            $pushFailure = $this->sync->push($stack, $target);
 
             if ($pushFailure !== null) {
                 return $this->fail($release, 'Could not write the stack files: '.$pushFailure->failureReason(), $log);
@@ -73,8 +98,6 @@ class ReleaseRunner
                 $this->enterMaintenance($release, $target, $log);
 
                 // A destructive migration never runs without its safety net.
-                // This used to ignore the dump's result, so a failed dump went
-                // straight on to drop columns with nothing to restore from.
                 $dumpFailure = $this->dumpBeforeMigrating($release, $target, $log);
 
                 if ($dumpFailure !== null) {
@@ -82,7 +105,7 @@ class ReleaseRunner
                 }
             }
 
-            foreach ($release->items as $item) {
+            foreach ($this->ordered($release) as $item) {
                 if (! $this->runItem($release, $item, $target, $log)) {
                     // Stop here. Items that already succeeded stay up and are
                     // each revertable on their own; half a release running is
@@ -91,16 +114,31 @@ class ReleaseRunner
                 }
             }
 
+            if ($failure = $this->registerServiceClients($stack, $target, $log)) {
+                return $this->fail($release, $failure, $log);
+            }
+
+            $log("\n==> Certificates\n");
+            $this->certificates->ensure($stack, $target, $log);
+
             $release->update(['status' => 'succeeded', 'finished_at' => now()]);
 
             // A stack is only active once something has actually been
             // deployed to it. Scheduled backups, drift polls and alerts select
             // active stacks, so this is what switches them on.
-            if ($release->stack->status !== 'active') {
-                $release->stack->update(['status' => 'active']);
+            if ($stack->status !== 'active') {
+                $stack->update(['status' => 'active']);
             }
 
-            $log("Release succeeded.\n");
+            if ($stack->isLive()) {
+                $this->advanceMain($release, $log);
+            }
+
+            $log("\nRelease succeeded.\n");
+        } catch (Throwable $e) {
+            report($e);
+
+            return $this->fail($release, 'Unexpected error: '.$e->getMessage(), $log);
         } finally {
             if ($window) {
                 $this->leaveMaintenance($release, $target, $log);
@@ -118,6 +156,10 @@ class ReleaseRunner
      */
     public function assertRunnable(Release $release): void
     {
+        if (! $release->stack->server?->isProvisioned()) {
+            throw new RuntimeException('The server has not been set up. Run "Set up server" first.');
+        }
+
         if ($release->isEmergency() && blank($release->reason)) {
             throw new RuntimeException('An emergency release needs a typed reason.');
         }
@@ -135,7 +177,7 @@ class ReleaseRunner
         foreach ($release->items as $item) {
             $entitlement = $this->entitlement($release, $item);
 
-            if ($entitlement === null) {
+            if ($entitlement === null || ! $entitlement->enabled) {
                 throw new RuntimeException("{$item->service->slug} is not enabled on this stack.");
             }
 
@@ -150,92 +192,239 @@ class ReleaseRunner
     }
 
     /**
-     * Write every item's from/to digest before the first swap.
+     * Write every item's from/to digest, and point the stack at the new
+     * images, before the first swap.
      */
     private function recordIntent(Release $release): void
     {
         foreach ($release->items as $item) {
             $entitlement = $this->entitlement($release, $item);
+            $to = $item->to_digest ?? $item->build?->digest;
 
             $item->update([
                 'from_digest' => $entitlement?->current_digest,
-                'to_digest' => $item->to_digest ?? $item->build?->digest,
+                'to_digest' => $to,
             ]);
+
+            // What the compose file renders. current_digest only moves once
+            // the new container has answered its health check.
+            $entitlement?->update(['desired_digest' => $to]);
         }
 
         $release->load('items.service', 'items.build');
+    }
+
+    /**
+     * The identity provider first: every other service checks its tokens
+     * against it, so it has to be up before they are.
+     *
+     * @return list<ReleaseItem>
+     */
+    private function ordered(Release $release): array
+    {
+        return $release->items
+            ->sortBy(fn (ReleaseItem $item) => [$item->service->identity_provider ? 0 : 1, $item->position])
+            ->values()
+            ->all();
     }
 
     private function runItem(Release $release, ReleaseItem $item, Target $target, Closure $log): bool
     {
         $entitlement = $this->entitlement($release, $item);
         $service = $item->service;
-        $root = $this->renderer->rootPath($release->stack);
+        $compose = $this->compose($release->stack);
+        $firstRun = $entitlement->initialized_at === null;
 
         $item->update(['status' => 'running', 'started_at' => now()]);
-        $log("\n--- {$service->slug}: {$item->from_digest} -> {$item->to_digest}\n");
+        $log("\n==> {$service->name}: ".($item->build?->label() ?? $item->to_digest).($firstRun ? ' (first deploy)' : '')."\n");
 
-        $compose = 'docker compose -f '.Shell::quote($root.'/docker-compose.yml');
+        $steps = ['pull' => $compose.' pull '.Shell::join($service->composeServices())];
 
-        $steps = [
-            'pull' => $compose.' pull '.Shell::quote($service->slug),
-            'migrate' => $this->migrateCommand($item, $compose),
-            // The web container and its process containers share one image,
-            // so they move together.
-            'swap' => $compose.' up -d --no-deps '.Shell::join($service->composeServices()),
+        if ($this->migrates($service)) {
+            // Every deploy, not only builds classified as carrying
+            // migrations: a first deploy has a whole history to apply to an
+            // empty database, and on anything else it is a no-op.
+            $steps['migrate'] = $this->oneOff($compose, $service, 'php artisan migrate --force');
+        }
+
+        $commands = [
+            ...($firstRun ? ($service->first_run_commands ?? []) : []),
+            ...($service->every_deploy_commands ?? []),
         ];
 
-        foreach (array_filter($steps) as $name => $command) {
-            $result = $this->runner->run($target, $command, timeout: 900, onOutput: $log);
+        foreach (array_values($commands) as $i => $command) {
+            $steps['command '.($i + 1)] = $this->oneOff($compose, $service, $command);
+        }
+
+        // The web container and its process containers share one image, so
+        // they move together.
+        $steps['swap'] = $compose.' up -d --no-deps '.Shell::join($service->composeServices());
+
+        foreach ($steps as $name => $command) {
+            $log("--- {$name}\n");
+            $result = $this->runner->run($target, $command, timeout: 1800, onOutput: $log);
 
             if ($result->failed()) {
-                $item->update([
-                    'status' => 'failed',
-                    'error' => "{$name}: ".$result->failureReason(),
-                    'finished_at' => now(),
-                ]);
-
-                return false;
+                return $this->itemFailed($item, "{$name}: ".$result->failureReason());
             }
         }
 
         if (! $this->healthy($entitlement, $target, $log)) {
-            $item->update([
-                'status' => 'failed',
-                'error' => 'Health check never passed.',
-                'finished_at' => now(),
-            ]);
+            return $this->itemFailed($item, 'Health check never passed.');
+        }
 
-            return false;
+        if ($service->identity_provider && $firstRun && ($failure = $this->createFirstAdmin($release->stack, $service, $target, $log))) {
+            return $this->itemFailed($item, $failure);
         }
 
         $item->update(['status' => 'succeeded', 'finished_at' => now()]);
 
-        $entitlement?->update([
+        $entitlement->update([
             'current_digest' => $item->to_digest,
             'desired_digest' => $item->to_digest,
             'state' => 'deployed',
             'last_deployed_at' => now(),
+            'initialized_at' => $entitlement->initialized_at ?? now(),
         ]);
 
         return true;
     }
 
-    /**
-     * Only Laravel services migrate, and only when the build actually carries
-     * migrations — running artisan on a Next.js container would just fail.
-     */
-    private function migrateCommand(ReleaseItem $item, string $compose): ?string
+    private function itemFailed(ReleaseItem $item, string $error): bool
     {
-        if ($item->build === null || $item->build->migration_kind === 'none') {
+        $item->update(['status' => 'failed', 'error' => $error, 'finished_at' => now()]);
+
+        return false;
+    }
+
+    private function migrates(Service $service): bool
+    {
+        return $service->build_recipe !== Service::RECIPE_NEXTJS && filled($service->database_name);
+    }
+
+    /**
+     * A command in a throwaway container from the new image, before the swap.
+     *
+     * The entrypoint is bypassed: images built from a repository's own
+     * Dockerfile often ignore their arguments and start the web server.
+     */
+    private function oneOff(string $compose, Service $service, string $command): string
+    {
+        return $compose.' run --rm --no-deps -T --entrypoint sh '.Shell::quote($service->slug).' -c '.Shell::quote($command);
+    }
+
+    /**
+     * Register every enabled service as a client of the identity provider,
+     * with the token the control plane generated for it (the same value that
+     * service's AUTH_SERVER_CALL_TOKEN resolves to). Runs on every release,
+     * so a service enabled later is registered on its first deploy.
+     *
+     * Needs pizzasys's `service-client:upsert --token-stdin`.
+     */
+    private function registerServiceClients(Stack $stack, Target $target, Closure $log): ?string
+    {
+        $entitlements = StackService::query()
+            ->with('service')
+            ->where('stack_id', $stack->id)
+            ->where('enabled', true)
+            ->get();
+
+        $provider = $entitlements->first(fn (StackService $s) => $s->service->identity_provider && filled($s->current_digest));
+
+        if ($provider === null) {
             return null;
         }
 
-        if ($item->service->build_recipe === 'nextjs') {
+        $clients = $entitlements->filter(fn (StackService $s) => ! $s->service->identity_provider && filled($s->service->auth_service_name));
+
+        if ($clients->isEmpty()) {
             return null;
         }
 
-        return $compose.' run --rm --no-deps '.Shell::quote($item->service->slug).' php artisan migrate --force';
+        $log("\n==> Service clients on {$provider->service->name}\n");
+        $compose = $this->compose($stack);
+
+        foreach ($clients as $client) {
+            $token = $this->env->serviceToken($stack, $client->service);
+
+            $result = $this->runner->run(
+                $target,
+                "printf '%s' ".Shell::quote($token).' | '.$compose.' exec -T -u www-data '.Shell::quote($provider->service->slug)
+                    .' php artisan service-client:upsert '.Shell::quote($client->service->auth_service_name).' --token-stdin',
+                timeout: 120,
+                onOutput: $log,
+            );
+
+            if ($result->failed()) {
+                return "Registering {$client->service->auth_service_name} with {$provider->service->name} failed: ".$result->failureReason();
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The client's first admin, on the identity provider's first deploy.
+     * Needs pizzasys's `app:create-admin --password-stdin`, which leaves an
+     * existing account untouched.
+     */
+    private function createFirstAdmin(Stack $stack, Service $service, Target $target, Closure $log): ?string
+    {
+        $client = $stack->client;
+
+        if (blank($client->admin_email)) {
+            $log("No first admin email on the client; skipping admin creation.\n");
+
+            return null;
+        }
+
+        $log("--- first admin {$client->admin_email}\n");
+
+        $result = $this->runner->run(
+            $target,
+            "printf '%s' ".Shell::quote($stack->secret('admin_password', 24)).' | '.$this->compose($stack)
+                .' exec -T -u www-data '.Shell::quote($service->slug)
+                .' php artisan app:create-admin '.Shell::quote($client->admin_email).' '.Shell::quote($client->admin_name ?: $client->name.' admin').' --password-stdin',
+            timeout: 120,
+            onOutput: $log,
+        );
+
+        return $result->failed() ? 'Creating the first admin failed: '.$result->failureReason() : null;
+    }
+
+    /**
+     * `main` follows the newest commit live for any client (decision 19).
+     * GitHub refuses anything but a fast-forward, which is exactly when main
+     * is already ahead; either way the release has already succeeded.
+     */
+    private function advanceMain(Release $release, Closure $log): void
+    {
+        if (! $this->github->configured()) {
+            return;
+        }
+
+        foreach ($release->items as $item) {
+            $build = $item->build;
+
+            if ($item->status !== 'succeeded' || $build === null || $build->edition !== null || blank($build->commit_sha)) {
+                continue;
+            }
+
+            try {
+                $response = $this->github->fastForward($item->service->repo_full_name, 'main', $build->commit_sha);
+
+                $log($response->successful()
+                    ? "main on {$item->service->repo_full_name} now at {$build->shortSha()}.\n"
+                    : "main on {$item->service->repo_full_name} left where it is ({$response->status()}): it is already ahead or has diverged.\n");
+            } catch (Throwable $e) {
+                $log("Could not update main on {$item->service->repo_full_name}: {$e->getMessage()}\n");
+            }
+        }
+    }
+
+    private function compose(Stack $stack): string
+    {
+        return 'docker compose -f '.Shell::quote($this->renderer->rootPath($stack).'/docker-compose.yml');
     }
 
     private function healthy(?StackService $entitlement, Target $target, Closure $log): bool
@@ -249,7 +438,7 @@ class ReleaseRunner
         $url = "http://127.0.0.1:{$entitlement->host_port}{$entitlement->service->health_path}";
 
         for ($attempt = 1; $attempt <= $attempts; $attempt++) {
-            $result = $this->runner->run($target, 'curl -fsS -m 5 '.Shell::quote($url), timeout: 15);
+            $result = $this->runner->run($target, 'curl -fsS -m 5 -o /dev/null '.Shell::quote($url), timeout: 15);
 
             if ($result->successful()) {
                 $log("Health check passed on attempt {$attempt}.\n");
@@ -304,10 +493,6 @@ class ReleaseRunner
      * Dump only the tables each destructive migration touches, per service,
      * into the control plane's backup store, recorded as a Backup row.
      *
-     * Per service because each service has its own database: an earlier
-     * version dumped every affected table from the first item's database, and
-     * wrote it to the client's own disk with no record of it.
-     *
      * Returns the reason when a dump failed, so the caller stops before
      * anything is migrated.
      */
@@ -340,7 +525,7 @@ class ReleaseRunner
     private function entitlement(Release $release, ReleaseItem $item): ?StackService
     {
         return StackService::query()
-            ->with('service', 'stack.client')
+            ->with('service', 'stack.client', 'stack.server')
             ->where('stack_id', $release->stack_id)
             ->where('service_id', $item->service_id)
             ->first();

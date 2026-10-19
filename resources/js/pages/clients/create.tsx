@@ -27,6 +27,8 @@ export default function ClientCreate({ servers }: { servers: ServerOption[] }) {
         name: '',
         slug: '',
         domain: '',
+        admin_email: '',
+        admin_name: '',
         notes: '',
         server_id: servers[0]?.id ? String(servers[0].id) : '',
         testing_server_id: '',
@@ -114,6 +116,42 @@ export default function ClientCreate({ servers }: { servers: ServerOption[] }) {
                                 hiring.{data.domain || 'acme.cloud'} for live,
                                 hiringtesting.{data.domain || 'acme.cloud'} for
                                 testing.
+                            </p>
+                        </div>
+
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="grid gap-2">
+                                <Label htmlFor="admin_email">
+                                    First admin's email
+                                </Label>
+                                <Input
+                                    id="admin_email"
+                                    type="email"
+                                    value={data.admin_email}
+                                    onChange={(e) =>
+                                        setData('admin_email', e.target.value)
+                                    }
+                                    placeholder="owner@acme.com"
+                                />
+                                <InputError message={errors.admin_email} />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="admin_name">
+                                    First admin's name
+                                </Label>
+                                <Input
+                                    id="admin_name"
+                                    value={data.admin_name}
+                                    onChange={(e) =>
+                                        setData('admin_name', e.target.value)
+                                    }
+                                />
+                                <InputError message={errors.admin_name} />
+                            </div>
+                            <p className="text-xs text-muted-foreground sm:col-span-2">
+                                Created on the first deploy of each tier with a
+                                generated password, which admins can reveal on
+                                the client page.
                             </p>
                         </div>
                     </CardContent>

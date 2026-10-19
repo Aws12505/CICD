@@ -32,7 +32,7 @@ class Release extends Model
 
     protected $fillable = [
         'stack_id', 'kind', 'status', 'reason', 'source_release_id',
-        'created_by', 'scheduled_for', 'window_started_at', 'window_ended_at',
+        'created_by', 'task_id', 'scheduled_for', 'window_started_at', 'window_ended_at',
         'started_at', 'finished_at', 'log_path',
     ];
 
@@ -63,6 +63,11 @@ class Release extends Model
     public function sourceRelease(): BelongsTo
     {
         return $this->belongsTo(self::class, 'source_release_id');
+    }
+
+    public function task(): BelongsTo
+    {
+        return $this->belongsTo(Task::class);
     }
 
     public function creator(): BelongsTo

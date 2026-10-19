@@ -10,10 +10,13 @@ use App\Models\ServiceEnvDefinition;
 use App\Models\Stack;
 use App\Models\StackService;
 use App\Services\Backup\BackupService;
+use App\Services\GitHub\GitHub;
+use App\Services\Provision\StackProvisioner;
 use App\Services\Release\ReleasePlanner;
 use App\Services\Release\ReleaseRunner;
 use App\Services\Remote\CommandResult;
 use App\Services\Remote\CommandRunner;
+use App\Services\Stack\CertificateIssuer;
 use App\Services\Stack\EnvResolver;
 use App\Services\Stack\StackRenderer;
 use App\Services\Stack\StackSync;
@@ -36,7 +39,7 @@ beforeEach(function () {
 function twoTierClient(): Client
 {
     $client = Client::factory()->create(['slug' => 'acme', 'domain' => 'acme.cloud']);
-    $server = Server::factory()->verified()->create();
+    $server = Server::factory()->verified()->create(['provisioned_at' => now()]);
 
     foreach ([Stack::TIER_LIVE, Stack::TIER_TESTING] as $i => $tier) {
         Stack::factory()->create([
@@ -104,12 +107,17 @@ function fakeRunner(array $failOn = []): CommandRunner
 
 function runnerWith(CommandRunner $commands): ReleaseRunner
 {
+    $sync = new StackSync(app(StackRenderer::class), $commands);
+
     return new ReleaseRunner(
         $commands,
-        new StackSync(app(StackRenderer::class), $commands),
+        $sync,
         app(StackRenderer::class),
         app(EnvResolver::class),
         new BackupService($commands, app(StackRenderer::class)),
+        new StackProvisioner($commands),
+        new CertificateIssuer($commands, $sync),
+        new GitHub,
     );
 }
 

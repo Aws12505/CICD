@@ -10,7 +10,7 @@ class Client extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'slug', 'domain', 'status', 'notes'];
+    protected $fillable = ['name', 'slug', 'domain', 'admin_email', 'admin_name', 'status', 'notes'];
 
     public function stacks(): HasMany
     {

@@ -39,6 +39,7 @@ class Service extends Model
         'every_deploy_commands',
         'health_path',
         'per_stack_build',
+        'identity_provider',
         'nats_publishes',
         'nats_consumes',
         'position',
@@ -51,6 +52,7 @@ class Service extends Model
     {
         return [
             'per_stack_build' => 'boolean',
+            'identity_provider' => 'boolean',
             'nats_publishes' => 'array',
             'nats_consumes' => 'array',
             'extra_databases' => 'array',

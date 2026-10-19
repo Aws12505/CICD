@@ -10,6 +10,7 @@ import {
     Package,
     Rocket,
     Server,
+    Table2,
     Settings2,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
@@ -54,6 +55,11 @@ const mainNavItems: NavItem[] = [
         title: 'Services',
         href: '/services',
         icon: Layers,
+    },
+    {
+        title: 'Versions',
+        href: '/versions',
+        icon: Table2,
     },
     {
         title: 'Builds',
