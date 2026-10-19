@@ -7,6 +7,7 @@ import {
     Pencil,
     PlugZap,
     RefreshCw,
+    SquareTerminal,
     Wrench,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -115,6 +116,14 @@ export default function ServerShow({
                         </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
+                        {server.verified && online && (
+                            <Button asChild>
+                                <Link href={`/servers/${server.id}/terminal`}>
+                                    <SquareTerminal className="size-4" />{' '}
+                                    Terminal
+                                </Link>
+                            </Button>
+                        )}
                         <Button asChild variant="outline">
                             <Link href={`/servers/${server.id}/edit`}>
                                 <Pencil className="size-4" /> Edit

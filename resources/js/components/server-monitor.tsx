@@ -1,5 +1,10 @@
-import { router } from '@inertiajs/react';
-import { AlertTriangle, FileText, RotateCw } from 'lucide-react';
+import { Link, router } from '@inertiajs/react';
+import {
+    AlertTriangle,
+    FileText,
+    RotateCw,
+    SquareTerminal,
+} from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Sparkline } from '@/components/sparkline';
 import { Badge } from '@/components/ui/badge';
@@ -351,6 +356,20 @@ export function ServerMonitor({ serverId }: { serverId: number }) {
                                     </td>
                                     <td className="p-3">
                                         <div className="flex justify-end gap-1">
+                                            {c.running && (
+                                                <Button
+                                                    asChild
+                                                    size="sm"
+                                                    variant="ghost"
+                                                >
+                                                    <Link
+                                                        href={`/servers/${serverId}/terminal?container=${encodeURIComponent(c.name)}`}
+                                                    >
+                                                        <SquareTerminal className="size-4" />{' '}
+                                                        Shell
+                                                    </Link>
+                                                </Button>
+                                            )}
                                             <Button
                                                 size="sm"
                                                 variant="ghost"

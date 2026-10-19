@@ -16,6 +16,7 @@ use App\Http\Controllers\ServerOpsController;
 use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\StackPlanController;
 use App\Http\Controllers\TaskController;
+use App\Http\Controllers\TerminalController;
 use App\Http\Controllers\VersionsController;
 use Illuminate\Support\Facades\Route;
 
@@ -178,6 +179,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('servers/{server}/containers/{container}/logs', [ServerOpsController::class, 'logs'])->name('servers.containers.logs');
         Route::post('servers/{server}/containers/{container}/restart', [ServerOpsController::class, 'restartContainer'])->name('servers.containers.restart');
         Route::post('servers/{server}/actions/{action}', [ServerOpsController::class, 'action'])->name('servers.actions');
+        // Terminal: admin-only, every session recorded.
+        Route::get('servers/{server}/terminal', [TerminalController::class, 'show'])->name('servers.terminal');
+        Route::post('servers/{server}/terminal', [TerminalController::class, 'issue'])->middleware('throttle:20,1')->name('servers.terminal.issue');
+        Route::get('servers/{server}/terminal/sessions', [TerminalController::class, 'sessions'])->name('servers.terminal.sessions');
+        Route::get('servers/{server}/terminal/sessions/{session}/recording', [TerminalController::class, 'recording'])->name('servers.terminal.recording');
         Route::get('clients/{client}/admin-password', [ClientController::class, 'adminPassword'])->name('clients.admin-password');
 
         // GitHub and registry tokens, the certificate email: credentials that

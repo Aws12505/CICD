@@ -1,0 +1,19 @@
+{
+  "name": "control-plane-terminal-gateway",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Browser terminal to client servers: WebSocket in, SSH out. The private key never reaches the browser.",
+  "main": "server.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "ssh2": "1.16.0",
+    "ws": "8.18.0"
+  }
+}
