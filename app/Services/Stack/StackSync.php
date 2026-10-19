@@ -6,6 +6,7 @@ use App\Contracts\Target;
 use App\Models\Stack;
 use App\Services\Remote\CommandResult;
 use App\Services\Remote\CommandRunner;
+use App\Support\Shell;
 use RuntimeException;
 
 /**
@@ -85,9 +86,9 @@ class StackSync
             }
         }
 
-        $quoted = implode(' ', array_map(fn (string $d) => $this->quote($d), array_unique($dirs)));
+        $quoted = implode(' ', array_map(fn (string $d) => Shell::quote($d), array_unique($dirs)));
 
-        return "set -e\nmkdir -p {$quoted}\nchmod 700 ".$this->quote($root.'/env');
+        return "set -e\nmkdir -p {$quoted}\nchmod 700 ".Shell::quote($root.'/env');
     }
 
     /**
@@ -97,7 +98,7 @@ class StackSync
     private function writeScript(string $path, string $contents): string
     {
         $encoded = base64_encode($contents);
-        $quotedPath = $this->quote($path);
+        $quotedPath = Shell::quote($path);
 
         if (strlen($encoded) > 100_000) {
             throw new RuntimeException("Rendered file [{$path}] is too large to push in one command.");
@@ -105,7 +106,7 @@ class StackSync
 
         return implode("\n", [
             'set -e',
-            'mkdir -p '.$this->quote(dirname($path)),
+            'mkdir -p '.Shell::quote(dirname($path)),
             // Written to a temporary file then moved, so a half-written file
             // is never visible to a container that is starting.
             "printf '%s' '{$encoded}' | base64 -d > {$quotedPath}.tmp",
@@ -115,11 +116,5 @@ class StackSync
                 : "chmod 644 {$quotedPath}.tmp",
             "mv {$quotedPath}.tmp {$quotedPath}",
         ]);
-    }
-
-    /** POSIX single-quoting; see SshTarget for why escapeshellarg is avoided. */
-    private function quote(string $value): string
-    {
-        return "'".str_replace("'", "'\\''", $value)."'";
     }
 }

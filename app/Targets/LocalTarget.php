@@ -24,6 +24,11 @@ final class LocalTarget implements Target
         );
     }
 
+    public function prefix(): array
+    {
+        return ['/bin/bash', '-c'];
+    }
+
     public function label(): string
     {
         return 'local';

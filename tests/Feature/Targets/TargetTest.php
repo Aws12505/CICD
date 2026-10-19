@@ -134,7 +134,9 @@ test('the private key is written locked down and removed afterwards', function (
     $keyPath = $argv[array_search('-i', $argv, true) + 1];
 
     expect(is_file($keyPath))->toBeTrue();
-    expect(file_get_contents($keyPath))->toBe('THE PRIVATE KEY');
+    // With a trailing newline: OpenSSH rejects a private key file without one
+    // as "invalid format".
+    expect(file_get_contents($keyPath))->toBe("THE PRIVATE KEY\n");
 
     // 0600 on any platform that reports modes meaningfully.
     if (DIRECTORY_SEPARATOR === '/') {

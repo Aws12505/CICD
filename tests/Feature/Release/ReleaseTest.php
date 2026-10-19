@@ -9,6 +9,7 @@ use App\Models\Service;
 use App\Models\ServiceEnvDefinition;
 use App\Models\Stack;
 use App\Models\StackService;
+use App\Services\Backup\BackupService;
 use App\Services\Release\ReleasePlanner;
 use App\Services\Release\ReleaseRunner;
 use App\Services\Remote\CommandResult;
@@ -108,6 +109,7 @@ function runnerWith(CommandRunner $commands): ReleaseRunner
         new StackSync(app(StackRenderer::class), $commands),
         app(StackRenderer::class),
         app(EnvResolver::class),
+        new BackupService($commands, app(StackRenderer::class)),
     );
 }
 
@@ -365,7 +367,7 @@ test('a partial failure leaves earlier services running and stops the rest', fun
         ]);
     }
 
-    $result = runnerWith(fakeRunner(failOn: ['up -d --no-deps bbb']))->run($release->fresh(), new NullTarget);
+    $result = runnerWith(fakeRunner(failOn: ["up -d --no-deps 'bbb'"]))->run($release->fresh(), new NullTarget);
 
     $items = $release->items()->orderBy('position')->get();
 
@@ -408,7 +410,9 @@ test('a destructive release dumps only the affected tables, with pipefail', func
 
     // Only the touched tables: a full dump of the reporting database would put
     // the window into tens of minutes, and nobody schedules one of those.
-    expect($dump)->toContain('goals goal_metrics');
+    expect($dump)->toContain('goals')->toContain('goal_metrics');
+    // Into the control plane's backup store, not onto the client's disk.
+    expect($dump)->toContain('/var/backups/control-plane/');
     expect($dump)->not->toContain('--all-databases');
     // Without pipefail the exit status is gzip's, so a dump that dies halfway
     // still looks successful and restores to half a table.

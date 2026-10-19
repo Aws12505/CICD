@@ -105,7 +105,7 @@ test('a dump is verified and moved into place, never left half-written', functio
 
     expect($dump)->toContain('gzip -t');
     expect($dump)->toContain('.part');
-    expect($dump)->toMatch('/mv .*\.part /');
+    expect($dump)->toMatch("/mv '[^']*\\.part' /");
 });
 
 test('the dump is streamed back rather than written on the client first', function () {
@@ -185,7 +185,7 @@ test('a pre-release dump covers only the named tables and records which', functi
 
     // A full dump of the reporting database would put the window into tens of
     // minutes, and a window nobody will schedule is a window nobody takes.
-    expect($dump)->toContain('lc_data goals goal_metrics');
+    expect($dump)->toContain('lc_data')->toContain('goals')->toContain('goal_metrics');
     // Restoring without knowing what the file holds is guesswork.
     expect($backup->tables)->toBe(['goals', 'goal_metrics']);
     expect($backup->triggered_by)->toBe('pre_release');

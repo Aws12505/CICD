@@ -8,6 +8,7 @@ use App\Models\Stack;
 use App\Models\StackService;
 use App\Models\User;
 use App\Services\Remote\CommandRunner;
+use App\Support\Shell;
 
 /**
  * Asks each server what it is actually running and compares it with what we
@@ -140,9 +141,9 @@ class DriftPoller
     {
         $result = $this->runner->run(
             $target,
-            'docker ps --all --filter '.escapeshellarg('label=com.docker.compose.project='.$stack->compose_project)
-                .' --format '.escapeshellarg('{{.Names}}')
-                .' | xargs -r docker inspect --format '.escapeshellarg('{{.Name}} {{.Image}}'),
+            'docker ps --all --filter '.Shell::quote('label=com.docker.compose.project='.$stack->compose_project)
+                .' --format '.Shell::quote('{{.Names}}')
+                .' | xargs -r docker inspect --format '.Shell::quote('{{.Name}} {{.Image}}'),
             timeout: 60,
         );
 

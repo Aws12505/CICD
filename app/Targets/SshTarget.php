@@ -4,6 +4,7 @@ namespace App\Targets;
 
 use App\Contracts\Invocation;
 use App\Contracts\Target;
+use App\Support\Shell;
 use RuntimeException;
 
 /**
@@ -15,7 +16,7 @@ use RuntimeException;
  *    to the remote shell, so both are folded into the remote script instead.
  *  - The private key has to exist as a file for the duration of the run. It is
  *    written with 0600 into a private directory and removed by cleanup(),
- *    which the executor calls even when a step throws.
+ *    which callers run even when a step throws.
  */
 final class SshTarget implements Target
 {
@@ -24,7 +25,7 @@ final class SshTarget implements Target
     private ?string $knownHostsPath = null;
 
     /**
-     * @param  string  $privateKey  PEM contents, already decrypted
+     * @param  string  $privateKey  OpenSSH/PEM contents, already decrypted
      * @param  string|null  $hostKey  the server's known_hosts line. Null disables
      *                                pinning and is only legitimate for the very
      *                                first connection, when the key is captured.
@@ -41,25 +42,49 @@ final class SshTarget implements Target
     public function invoke(string $command, ?string $cwd, array $env): Invocation
     {
         return new Invocation(
-            argv: [
-                'ssh',
-                '-i', $this->keyPath(),
-                '-p', (string) $this->port,
-                '-o', 'BatchMode=yes',
-                '-o', 'ConnectTimeout='.$this->connectTimeout,
-                ...$this->hostKeyOptions(),
-                $this->user.'@'.$this->host,
-                $this->remoteScript($command, $cwd, $env),
-            ],
+            argv: [...$this->prefix(), $this->remoteScript($command, $cwd, $env)],
             // Both are the local ssh client's, not the remote shell's.
             cwd: null,
             env: null,
         );
     }
 
-    public function label(): string
+    public function prefix(): array
+    {
+        return [...$this->sshArgv(), $this->address()];
+    }
+
+    /**
+     * `ssh` with this server's key and pinned host key, but no destination.
+     *
+     * What rsync's `-e` wants. Anything that reaches the server by some route
+     * other than invoke() — rsync, a streamed dump — must use this rather than
+     * a bare `ssh`, or it silently falls back to whatever key and known_hosts
+     * the worker happens to have.
+     *
+     * @return list<string>
+     */
+    public function sshArgv(): array
+    {
+        return [
+            'ssh',
+            '-i', $this->keyPath(),
+            '-p', (string) $this->port,
+            '-o', 'BatchMode=yes',
+            '-o', 'IdentitiesOnly=yes',
+            '-o', 'ConnectTimeout='.$this->connectTimeout,
+            ...$this->hostKeyOptions(),
+        ];
+    }
+
+    public function address(): string
     {
         return $this->user.'@'.$this->host;
+    }
+
+    public function label(): string
+    {
+        return $this->address();
     }
 
     public function cleanup(): void
@@ -86,7 +111,7 @@ final class SshTarget implements Target
         $lines = [];
 
         if ($cwd !== null && $cwd !== '') {
-            $lines[] = 'cd '.$this->quote($cwd).' || exit 1';
+            $lines[] = 'cd '.Shell::quote($cwd).' || exit 1';
         }
 
         foreach ($env as $key => $value) {
@@ -96,28 +121,12 @@ final class SshTarget implements Target
                 continue;
             }
 
-            $lines[] = 'export '.$key.'='.$this->quote((string) $value);
+            $lines[] = 'export '.$key.'='.Shell::quote((string) $value);
         }
 
         $lines[] = $command;
 
         return implode("\n", $lines);
-    }
-
-    /**
-     * POSIX single-quoting, done here rather than with escapeshellarg().
-     *
-     * escapeshellarg() quotes for the *local* platform: on Windows it emits
-     * double quotes. The remote shell is always POSIX regardless of where the
-     * control plane runs, and inside double quotes it would still expand `$`,
-     * so a value containing $(...) would execute on the client's server.
-     *
-     * Single quotes suppress every expansion; the only character needing care
-     * is the single quote itself, which is closed, escaped and reopened.
-     */
-    private function quote(string $value): string
-    {
-        return "'".str_replace("'", "'\\''", $value)."'";
     }
 
     /** @return list<string> */
@@ -137,7 +146,7 @@ final class SshTarget implements Target
 
     private function keyPath(): string
     {
-        return $this->keyPath ??= $this->writeTempFile('key-', $this->privateKey);
+        return $this->keyPath ??= $this->writeTempFile('key-', rtrim($this->privateKey)."\n");
     }
 
     private function knownHostsPath(): string

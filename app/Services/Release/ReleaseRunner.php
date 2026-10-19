@@ -6,11 +6,12 @@ use App\Contracts\Target;
 use App\Models\Release;
 use App\Models\ReleaseItem;
 use App\Models\StackService;
-use App\Services\Remote\CommandResult;
+use App\Services\Backup\BackupService;
 use App\Services\Remote\CommandRunner;
 use App\Services\Stack\EnvResolver;
 use App\Services\Stack\StackRenderer;
 use App\Services\Stack\StackSync;
+use App\Support\Shell;
 use Closure;
 use RuntimeException;
 
@@ -29,6 +30,7 @@ class ReleaseRunner
         private readonly StackSync $sync,
         private readonly StackRenderer $renderer,
         private readonly EnvResolver $env,
+        private readonly BackupService $backups,
     ) {}
 
     /**
@@ -69,7 +71,15 @@ class ReleaseRunner
                 $log("Destructive migration — entering maintenance window.\n");
                 $release->update(['window_started_at' => now()]);
                 $this->enterMaintenance($release, $target, $log);
-                $this->dumpAffectedTables($release, $target, $log);
+
+                // A destructive migration never runs without its safety net.
+                // This used to ignore the dump's result, so a failed dump went
+                // straight on to drop columns with nothing to restore from.
+                $dumpFailure = $this->dumpBeforeMigrating($release, $target, $log);
+
+                if ($dumpFailure !== null) {
+                    return $this->fail($release, "Pre-migration backup failed, nothing was migrated: {$dumpFailure}", $log);
+                }
             }
 
             foreach ($release->items as $item) {
@@ -82,6 +92,14 @@ class ReleaseRunner
             }
 
             $release->update(['status' => 'succeeded', 'finished_at' => now()]);
+
+            // A stack is only active once something has actually been
+            // deployed to it. Scheduled backups, drift polls and alerts select
+            // active stacks, so this is what switches them on.
+            if ($release->stack->status !== 'active') {
+                $release->stack->update(['status' => 'active']);
+            }
+
             $log("Release succeeded.\n");
         } finally {
             if ($window) {
@@ -157,10 +175,12 @@ class ReleaseRunner
         $item->update(['status' => 'running', 'started_at' => now()]);
         $log("\n--- {$service->slug}: {$item->from_digest} -> {$item->to_digest}\n");
 
+        $compose = 'docker compose -f '.Shell::quote($root.'/docker-compose.yml');
+
         $steps = [
-            'pull' => "docker compose -f {$root}/docker-compose.yml pull {$service->slug}",
-            'migrate' => $this->migrateCommand($release, $item, $root),
-            'swap' => "docker compose -f {$root}/docker-compose.yml up -d --no-deps {$service->slug}",
+            'pull' => $compose.' pull '.Shell::quote($service->slug),
+            'migrate' => $this->migrateCommand($item, $compose),
+            'swap' => $compose.' up -d --no-deps '.Shell::quote($service->slug),
         ];
 
         foreach (array_filter($steps) as $name => $command) {
@@ -203,7 +223,7 @@ class ReleaseRunner
      * Only Laravel services migrate, and only when the build actually carries
      * migrations — running artisan on a Next.js container would just fail.
      */
-    private function migrateCommand(Release $release, ReleaseItem $item, string $root): ?string
+    private function migrateCommand(ReleaseItem $item, string $compose): ?string
     {
         if ($item->build === null || $item->build->migration_kind === 'none') {
             return null;
@@ -213,7 +233,7 @@ class ReleaseRunner
             return null;
         }
 
-        return "docker compose -f {$root}/docker-compose.yml run --rm --no-deps {$item->service->slug} php artisan migrate --force";
+        return $compose.' run --rm --no-deps '.Shell::quote($item->service->slug).' php artisan migrate --force';
     }
 
     private function healthy(?StackService $entitlement, Target $target, Closure $log): bool
@@ -227,7 +247,7 @@ class ReleaseRunner
         $url = "http://127.0.0.1:{$entitlement->host_port}{$entitlement->service->health_path}";
 
         for ($attempt = 1; $attempt <= $attempts; $attempt++) {
-            $result = $this->runner->run($target, "curl -fsS -m 5 {$url}", timeout: 15);
+            $result = $this->runner->run($target, 'curl -fsS -m 5 '.Shell::quote($url), timeout: 15);
 
             if ($result->successful()) {
                 $log("Health check passed on attempt {$attempt}.\n");
@@ -260,7 +280,7 @@ class ReleaseRunner
 
             $this->runner->run(
                 $target,
-                "printf '%s' '".base64_encode($conf)."' | base64 -d > ".escapeshellarg($path),
+                "printf '%s' '".base64_encode($conf)."' | base64 -d > ".Shell::quote($path),
                 timeout: 30,
             );
         }
@@ -279,37 +299,40 @@ class ReleaseRunner
     }
 
     /**
-     * Dump only the tables the migration touches.
+     * Dump only the tables each destructive migration touches, per service,
+     * into the control plane's backup store, recorded as a Backup row.
      *
-     * A full dump of the reporting database would put the window into tens of
-     * minutes, and a window nobody will schedule is a window nobody takes.
+     * Per service because each service has its own database: an earlier
+     * version dumped every affected table from the first item's database, and
+     * wrote it to the client's own disk with no record of it.
+     *
+     * Returns the reason when a dump failed, so the caller stops before
+     * anything is migrated.
      */
-    private function dumpAffectedTables(Release $release, Target $target, Closure $log): ?CommandResult
+    private function dumpBeforeMigrating(Release $release, Target $target, Closure $log): ?string
     {
-        $tables = $release->affectedTables();
+        foreach ($release->items as $item) {
+            if (! ($item->build?->needsWindow() ?? false)) {
+                continue;
+            }
 
-        if ($tables === []) {
-            return null;
+            $tables = $item->build->affected_tables ?? [];
+            $entitlement = $this->entitlement($release, $item);
+
+            if ($tables === [] || $entitlement === null || $release->stack->databaseFor($item->service) === null) {
+                continue;
+            }
+
+            $log("Backing up {$item->service->slug}: ".implode(', ', $tables)."\n");
+
+            $backup = $this->backups->tables($release->stack, $entitlement, $tables, $target, $release->id, $log);
+
+            if ($backup->status !== 'success') {
+                return "{$item->service->slug}: ".($backup->error ?? 'unknown error');
+            }
         }
 
-        $stack = $release->stack;
-        $database = $stack->databaseFor($release->items->first()->service);
-        $path = "/var/backups/{$stack->compose_project}/pre-release-{$release->id}.sql.gz";
-
-        $log('Dumping '.count($tables)." table(s) before migrating.\n");
-
-        // set -o pipefail: without it the exit status is gzip's, so a dump
-        // that dies halfway still looks like a success and leaves a truncated
-        // file that restores to half a table.
-        $command = sprintf(
-            'set -o pipefail; mkdir -p %s && docker exec %s sh -c %s | gzip -9 > %s',
-            escapeshellarg(dirname($path)),
-            escapeshellarg(config('deploy.mysql_container', 'mysql')),
-            escapeshellarg('mysqldump --single-transaction --quick --hex-blob '.$database.' '.implode(' ', $tables)),
-            escapeshellarg($path),
-        );
-
-        return $this->runner->run($target, $command, timeout: 1800, onOutput: $log);
+        return null;
     }
 
     private function entitlement(Release $release, ReleaseItem $item): ?StackService

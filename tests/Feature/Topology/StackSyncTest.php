@@ -1,6 +1,5 @@
 <?php
 
-use App\Contracts\Invocation;
 use App\Contracts\Target;
 use App\Models\Service;
 use App\Models\Stack;
@@ -31,21 +30,6 @@ class RecordingRunner extends CommandRunner
 
         return new CommandResult(0, '', '', 1);
     }
-}
-
-final class NullTarget implements Target
-{
-    public function invoke(string $command, ?string $cwd, array $env): Invocation
-    {
-        return new Invocation(['true']);
-    }
-
-    public function label(): string
-    {
-        return 'null';
-    }
-
-    public function cleanup(): void {}
 }
 
 function syncableStack(): Stack

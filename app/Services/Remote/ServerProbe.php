@@ -3,6 +3,7 @@
 namespace App\Services\Remote;
 
 use App\Models\Server;
+use App\Support\Shell;
 use App\Targets\LocalTarget;
 
 /**
@@ -26,7 +27,7 @@ class ServerProbe
     {
         $result = $this->runner->run(
             target: new LocalTarget,
-            command: sprintf('ssh-keyscan -T 10 -p %d %s', $server->ssh_port, escapeshellarg($server->hostname)),
+            command: sprintf('ssh-keyscan -T 10 -p %d %s', $server->ssh_port, Shell::quote($server->hostname)),
             timeout: 20,
         );
 

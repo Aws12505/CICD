@@ -1,5 +1,7 @@
 <?php
 
+use App\Contracts\Invocation;
+use App\Contracts\Target;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -50,6 +52,30 @@ expect()->extend('toBeOne', function () {
 function actorWithRole(string $role): User
 {
     return tap(User::factory()->create())->assignRole($role);
+}
+
+/**
+ * A target that runs nothing. Tests that only care about which commands are
+ * built pair it with a recording CommandRunner.
+ */
+final class NullTarget implements Target
+{
+    public function invoke(string $command, ?string $cwd, array $env): Invocation
+    {
+        return new Invocation(['true']);
+    }
+
+    public function prefix(): array
+    {
+        return ['ssh', 'deploy@test-server'];
+    }
+
+    public function label(): string
+    {
+        return 'null';
+    }
+
+    public function cleanup(): void {}
 }
 
 /** A project with a known webhook secret, for signature tests. */

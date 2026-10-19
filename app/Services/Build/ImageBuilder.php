@@ -7,6 +7,7 @@ use App\Models\Service;
 use App\Models\Stack;
 use App\Services\Remote\CommandRunner;
 use App\Services\Stack\EnvResolver;
+use App\Support\Shell;
 use App\Targets\LocalTarget;
 use Closure;
 
@@ -74,7 +75,7 @@ class ImageBuilder
         $steps = [
             'fetch' => $this->fetchScript($service, $build->commit_sha, $workspace),
             'build' => $this->buildScript($build, $workspace, $reference),
-            'push' => "docker push {$this->quote($reference)}",
+            'push' => "docker push {Shell::quote($reference)}",
         ];
 
         foreach ($steps as $name => $script) {
@@ -139,12 +140,12 @@ class ImageBuilder
         $range = $fromSha === null
             // No previous build: only this commit's own migrations, or a first
             // build would classify the entire history as destructive.
-            ? $this->quote($toSha).'^!'
-            : $this->quote($fromSha).'..'.$this->quote($toSha);
+            ? Shell::quote($toSha).'^!'
+            : Shell::quote($fromSha).'..'.Shell::quote($toSha);
 
         $listed = $this->runner->run(
             new LocalTarget,
-            "git -C {$this->quote($workspace)} diff --name-only --diff-filter=AM {$range} -- 'database/migrations/*'",
+            "git -C {Shell::quote($workspace)} diff --name-only --diff-filter=AM {$range} -- 'database/migrations/*'",
             timeout: 60,
         );
 
@@ -158,7 +159,7 @@ class ImageBuilder
         foreach ($files as $path) {
             $shown = $this->runner->run(
                 new LocalTarget,
-                "git -C {$this->quote($workspace)} show {$this->quote($toSha)}:{$this->quote($path)}",
+                "git -C {Shell::quote($workspace)} show {Shell::quote($toSha)}:{Shell::quote($path)}",
                 timeout: 60,
             );
 
@@ -181,15 +182,15 @@ class ImageBuilder
 
         return implode("\n", [
             'set -e',
-            'mkdir -p '.$this->quote(dirname($workspace)),
-            'if [ ! -d '.$this->quote($workspace.'/.git').' ]; then',
-            '  git clone --no-checkout '.$this->quote($repo).' '.$this->quote($workspace),
+            'mkdir -p '.Shell::quote(dirname($workspace)),
+            'if [ ! -d '.Shell::quote($workspace.'/.git').' ]; then',
+            '  git clone --no-checkout '.Shell::quote($repo).' '.Shell::quote($workspace),
             'fi',
-            'git -C '.$this->quote($workspace).' fetch --all --prune --tags',
+            'git -C '.Shell::quote($workspace).' fetch --all --prune --tags',
             // Detached checkout of the exact commit: a branch name could move
             // between classification and build.
-            'git -C '.$this->quote($workspace).' checkout --force '.$this->quote($commitSha),
-            'git -C '.$this->quote($workspace).' clean -fdx',
+            'git -C '.Shell::quote($workspace).' checkout --force '.Shell::quote($commitSha),
+            'git -C '.Shell::quote($workspace).' clean -fdx',
         ]);
     }
 
@@ -207,25 +208,25 @@ class ImageBuilder
 
             if ($entitlement !== null) {
                 foreach ($this->env->buildArgs($entitlement) as $key => $value) {
-                    $args .= ' --build-arg '.$this->quote($key.'='.$value);
+                    $args .= ' --build-arg '.Shell::quote($key.'='.$value);
                 }
             }
         }
 
         $dockerfile = filled($service->dockerfile_path)
-            ? ' -f '.$this->quote($service->dockerfile_path)
+            ? ' -f '.Shell::quote($service->dockerfile_path)
             : '';
 
         return 'docker build'.$dockerfile.$args
-            .' -t '.$this->quote($reference)
-            .' '.$this->quote($workspace);
+            .' -t '.Shell::quote($reference)
+            .' '.Shell::quote($workspace);
     }
 
     private function readDigest(string $reference): ?string
     {
         $result = $this->runner->run(
             new LocalTarget,
-            'docker inspect --format \'{{index .RepoDigests 0}}\' '.$this->quote($reference),
+            'docker inspect --format \'{{index .RepoDigests 0}}\' '.Shell::quote($reference),
             timeout: 60,
         );
 
@@ -234,10 +235,5 @@ class ImageBuilder
         }
 
         return trim(explode('@', $result->output(), 2)[1]);
-    }
-
-    private function quote(string $value): string
-    {
-        return "'".str_replace("'", "'\\''", $value)."'";
     }
 }
