@@ -1,5 +1,7 @@
 import { Head, Link } from '@inertiajs/react';
 import { Activity, CheckCircle2, GitBranch, XCircle } from 'lucide-react';
+import { FleetView } from '@/components/fleet-view';
+import type { FleetServer } from '@/components/fleet-view';
 import { RunStatusBadge } from '@/components/run-status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -40,6 +42,7 @@ interface Props {
         success: number;
         failed: number;
     };
+    fleet: FleetServer[] | null;
 }
 
 function fmtDuration(ms: number | null) {
@@ -50,7 +53,12 @@ function fmtDuration(ms: number | null) {
     return ms < 1000 ? `${ms}ms` : `${Math.round(ms / 1000)}s`;
 }
 
-export default function Dashboard({ recentRuns, projects, stats }: Props) {
+export default function Dashboard({
+    recentRuns,
+    projects,
+    stats,
+    fleet,
+}: Props) {
     const totalPipelines = projects.reduce(
         (sum, project) => sum + project.pipelines.length,
         0,
@@ -86,6 +94,8 @@ export default function Dashboard({ recentRuns, projects, stats }: Props) {
         <>
             <Head title="Dashboard" />
             <div className="flex h-full flex-1 flex-col gap-6 p-4">
+                {fleet && <FleetView servers={fleet} />}
+
                 <Card className="relative overflow-hidden border border-sidebar-border/60 bg-card/80">
                     <PlaceholderPattern className="absolute inset-0 text-muted/30" />
                     <CardContent className="relative flex flex-col gap-6 p-6 lg:flex-row lg:items-end lg:justify-between">

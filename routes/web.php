@@ -12,6 +12,7 @@ use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ReleaseController;
 use App\Http\Controllers\RunController;
 use App\Http\Controllers\ServerController;
+use App\Http\Controllers\ServerOpsController;
 use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\StackPlanController;
 use App\Http\Controllers\TaskController;
@@ -172,6 +173,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('servers/{server}/rescan', [ServerController::class, 'rescan'])->name('servers.rescan');
         Route::post('servers/{server}/regenerate-key', [ServerController::class, 'regenerateKey'])->name('servers.regenerate-key');
         Route::post('servers/{server}/provision', [ServerController::class, 'provision'])->name('servers.provision');
+        Route::get('servers/{server}/metrics/live', [ServerOpsController::class, 'live'])->name('servers.metrics.live');
+        Route::get('servers/{server}/metrics', [ServerOpsController::class, 'history'])->name('servers.metrics');
+        Route::get('servers/{server}/containers/{container}/logs', [ServerOpsController::class, 'logs'])->name('servers.containers.logs');
+        Route::post('servers/{server}/containers/{container}/restart', [ServerOpsController::class, 'restartContainer'])->name('servers.containers.restart');
+        Route::post('servers/{server}/actions/{action}', [ServerOpsController::class, 'action'])->name('servers.actions');
         Route::get('clients/{client}/admin-password', [ClientController::class, 'adminPassword'])->name('clients.admin-password');
 
         // GitHub and registry tokens, the certificate email: credentials that

@@ -75,3 +75,16 @@ Schedule::command('stacks:poll-drift')
 Schedule::command('releases:run-due')
     ->everyMinute()
     ->withoutOverlapping();
+
+/*
+|--------------------------------------------------------------------------
+| Monitoring
+|--------------------------------------------------------------------------
+|
+| One SSH call per server per minute; nothing installed on the servers.
+|
+*/
+
+Schedule::command('servers:collect-metrics')
+    ->everyMinute()
+    ->withoutOverlapping();

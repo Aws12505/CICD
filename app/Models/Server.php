@@ -32,6 +32,7 @@ class Server extends Model
         'last_error',
         'notes',
         'capabilities',
+        'certificates',
         'provisioned_at',
     ];
 
@@ -54,6 +55,7 @@ class Server extends Model
             'ssh_private_key' => 'encrypted',
             'secrets' => 'encrypted:array',
             'capabilities' => 'array',
+            'certificates' => 'array',
             'ssh_port' => 'integer',
             'last_seen_at' => 'datetime',
             'provisioned_at' => 'datetime',
@@ -63,6 +65,11 @@ class Server extends Model
     public function stacks(): HasMany
     {
         return $this->hasMany(Stack::class);
+    }
+
+    public function metrics(): HasMany
+    {
+        return $this->hasMany(ServerMetric::class);
     }
 
     /** The line to paste into the VPS so the control plane can log in. */

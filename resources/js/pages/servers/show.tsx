@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
+import { ServerMonitor } from '@/components/server-monitor';
 import { ServerStatusBadge } from '@/components/server-status-badge';
 import { TASK_STATUS_VARIANT } from '@/components/task-panel';
 import { Badge } from '@/components/ui/badge';
@@ -81,7 +82,13 @@ function CopyLine({ text }: { text: string }) {
     );
 }
 
-export default function ServerShow({ server }: { server: ServerDetail }) {
+export default function ServerShow({
+    server,
+    actions,
+}: {
+    server: ServerDetail;
+    actions: { key: string; label: string }[];
+}) {
     const online = server.status === 'online';
     const provision = server.last_provision;
     const provisioning =
@@ -250,6 +257,35 @@ export default function ServerShow({ server }: { server: ServerDetail }) {
                         </Step>
                     </CardContent>
                 </Card>
+
+                {server.verified && online && (
+                    <>
+                        <ServerMonitor serverId={server.id} />
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Quick actions</CardTitle>
+                            </CardHeader>
+                            <CardContent className="flex flex-wrap gap-2">
+                                {actions.map((action) => (
+                                    <Button
+                                        key={action.key}
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                            if (confirm(`${action.label}?`)) {
+                                                router.post(
+                                                    `/servers/${server.id}/actions/${action.key}`,
+                                                );
+                                            }
+                                        }}
+                                    >
+                                        {action.label}
+                                    </Button>
+                                ))}
+                            </CardContent>
+                        </Card>
+                    </>
+                )}
 
                 {server.stacks && server.stacks.length > 0 && (
                     <Card>

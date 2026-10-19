@@ -4,19 +4,20 @@ namespace App\Http\Controllers;
 
 use App\Models\PipelineRun;
 use App\Models\Project;
+use App\Services\Monitoring\Fleet;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class DashboardController extends Controller
 {
-    public function __invoke(): Response
+    public function __invoke(Fleet $fleet): Response
     {
         $recentRuns = PipelineRun::query()
             ->with('pipeline.project')
             ->latest()
             ->limit(15)
             ->get()
-            ->map(fn($run) => [
+            ->map(fn ($run) => [
                 'id' => $run->id,
                 'project_name' => $run->pipeline->project->name,
                 'branch' => $run->pipeline->branch,
@@ -32,15 +33,15 @@ class DashboardController extends Controller
             ->with([
                 'pipelines' => function ($q) {
                     $q->with(['latestRun']);
-                }
+                },
             ])
             ->orderBy('name')
             ->get()
-            ->map(fn($project) => [
+            ->map(fn ($project) => [
                 'id' => $project->id,
                 'name' => $project->name,
                 'repo_name' => $project->repo_full_name ?? $project->repo_name,
-                'pipelines' => $project->pipelines->map(fn($p) => [
+                'pipelines' => $project->pipelines->map(fn ($p) => [
                     'id' => $p->id,
                     'branch' => $p->branch,
                     'enabled' => $p->enabled,
@@ -59,6 +60,8 @@ class DashboardController extends Controller
             'recentRuns' => $recentRuns,
             'projects' => $projects,
             'stats' => $stats,
+            // Servers hold the keys to client machines; only admins see them.
+            'fleet' => request()->user()?->hasRole('admin') ? $fleet->servers() : null,
         ]);
     }
 }

@@ -82,6 +82,7 @@ class ServerController extends Controller
                 ]),
                 'last_provision' => $provisioning ? TaskController::summarise($provisioning) : null,
             ],
+            'actions' => collect(ServerOpsController::ACTIONS)->map(fn ($a, $key) => ['key' => $key, 'label' => $a[0]])->values(),
         ]);
     }
 
