@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\BuildController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ClientEnvController;
 use App\Http\Controllers\ControlPlaneSettingsController;
@@ -111,6 +112,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     | is operator work; an emergency and adopting drift are admin work,
     | because both rewrite what we believe is correct.
     */
+    // Builds: anyone can read; building is operator work. A build never
+    // deploys anything.
+    Route::get('builds', [BuildController::class, 'index'])->name('builds.index');
+    Route::post('builds', [BuildController::class, 'store'])->middleware('role:admin|operator')->name('builds.store');
+
     Route::get('releases', [ReleaseController::class, 'index'])->name('releases.index');
     Route::get('releases/{release}', [ReleaseController::class, 'show'])->name('releases.show');
     Route::get('operations', [OperationsController::class, 'index'])->name('operations.index');

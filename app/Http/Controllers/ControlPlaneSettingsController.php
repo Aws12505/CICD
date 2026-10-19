@@ -69,7 +69,12 @@ class ControlPlaneSettingsController extends Controller
             ];
         }
 
-        return Inertia::render('control-plane/settings', ['fields' => $fields]);
+        return Inertia::render('control-plane/settings', [
+            'fields' => $fields,
+            // Added to each service repository's webhooks (push events,
+            // application/json, the webhook secret above).
+            'webhook_url' => route('webhook.build'),
+        ]);
     }
 
     public function update(Request $request): RedirectResponse

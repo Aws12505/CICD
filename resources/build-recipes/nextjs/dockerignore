@@ -1,0 +1,8 @@
+.git
+.github
+node_modules
+.next
+.env
+.env.local
+.env.development*
+!.env.production.local

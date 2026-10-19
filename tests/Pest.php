@@ -127,7 +127,12 @@ class RecordingRunner extends CommandRunner
     {
         $once = fn (string $text): string => preg_replace_callback(
             "#'([A-Za-z0-9+/]{16,}={0,2})'#",
-            fn (array $m): string => "'".base64_decode($m[1])."'",
+            // Only where it decodes to text: a commit sha is valid base64 too.
+            fn (array $m): string => ($text = base64_decode($m[1], true)) !== false
+                && mb_check_encoding($text, 'UTF-8')
+                && ! preg_match('/[\x00-\x08\x0E-\x1F]/', $text)
+                    ? "'".$text."'"
+                    : $m[0],
             $text,
         );
 

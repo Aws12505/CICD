@@ -5,7 +5,7 @@ RUN a2enmod rewrite headers expires
 
 # OS deps for common PHP extensions
 RUN apt-get update && apt-get install -y \
-    git zip unzip curl ca-certificates gnupg \
+    git zip unzip curl ca-certificates gnupg openssh-client rsync \
     libicu-dev \
     libzip-dev \
     libpng-dev libjpeg-dev libfreetype6-dev libwebp-dev \
@@ -44,7 +44,7 @@ RUN install -m 0755 -d /etc/apt/keyrings \
  && chmod a+r /etc/apt/keyrings/docker.asc \
  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list \
  && apt-get update \
- && apt-get install -y docker-ce-cli docker-compose-plugin \
+ && apt-get install -y docker-ce-cli docker-compose-plugin docker-buildx-plugin \
  && rm -rf /var/lib/apt/lists/*
 
 # Composer

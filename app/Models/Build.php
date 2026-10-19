@@ -18,10 +18,15 @@ class Build extends Model
     use HasFactory;
 
     protected $fillable = [
-        'service_id', 'edition', 'stack_id', 'branch', 'commit_sha', 'version',
+        'service_id', 'edition', 'number', 'stack_id', 'branch', 'commit_sha', 'version',
         'image_tag', 'digest', 'migration_kind', 'affected_tables',
-        'migration_reasons', 'status', 'error', 'log_path', 'built_at',
+        'migration_reasons', 'changelog', 'status', 'trigger', 'user_id', 'task_id',
+        'error', 'log_path', 'built_at',
     ];
+
+    public const TRIGGER_WEBHOOK = 'webhook';
+
+    public const TRIGGER_MANUAL = 'manual';
 
     /**
      * @return array<string, string>
@@ -31,6 +36,8 @@ class Build extends Model
         return [
             'affected_tables' => 'array',
             'migration_reasons' => 'array',
+            'changelog' => 'array',
+            'number' => 'integer',
             'built_at' => 'datetime',
         ];
     }
@@ -43,6 +50,32 @@ class Build extends Model
     public function stack(): BelongsTo
     {
         return $this->belongsTo(Stack::class);
+    }
+
+    public function task(): BelongsTo
+    {
+        return $this->belongsTo(Task::class);
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    /** The edition a branch builds: `edition/franchisee` builds "franchisee". */
+    public static function editionFor(string $branch): ?string
+    {
+        return str_starts_with($branch, 'edition/') ? substr($branch, 8) : null;
+    }
+
+    /** What people call it: "Hiring #143 (a1b2c3d)", "Data/franchisee #12". */
+    public function label(): string
+    {
+        $name = $this->service->name.($this->edition ? '/'.$this->edition : '');
+        $number = $this->number ? ' #'.$this->number : '';
+        $sha = $this->commit_sha ? ' ('.$this->shortSha().')' : '';
+
+        return $name.$number.$sha;
     }
 
     /** Whether deploying this needs a scheduled maintenance window. */
@@ -63,6 +96,6 @@ class Build extends Model
 
     public function shortSha(): string
     {
-        return substr($this->commit_sha, 0, 7);
+        return substr((string) $this->commit_sha, 0, 7);
     }
 }

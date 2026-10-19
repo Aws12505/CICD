@@ -7,6 +7,7 @@ import {
     Layers,
     LayoutGrid,
     ListChecks,
+    Package,
     Rocket,
     Server,
     Settings2,
@@ -53,6 +54,11 @@ const mainNavItems: NavItem[] = [
         title: 'Services',
         href: '/services',
         icon: Layers,
+    },
+    {
+        title: 'Builds',
+        href: '/builds',
+        icon: Package,
     },
     {
         title: 'Releases',

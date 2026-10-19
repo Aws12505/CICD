@@ -1,67 +1,82 @@
 <?php
 
+use App\Jobs\BuildJob;
 use App\Models\Build;
+use App\Models\Release;
 use App\Models\Service;
+use App\Models\ServiceEnvDefinition;
+use App\Models\Setting;
 use App\Models\Stack;
+use App\Models\StackService;
+use App\Models\Task;
 use App\Services\Build\ImageBuilder;
 use App\Services\Build\MigrationClassifier;
 use App\Services\Remote\CommandResult;
-use App\Services\Remote\CommandRunner;
 use App\Services\Stack\EnvResolver;
+use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Testing\TestResponse;
 
 uses(RefreshDatabase::class);
 
-/** Answers each command from a canned map, and records what it was asked. */
-function scriptedRunner(array $responses = []): CommandRunner
+beforeEach(function () {
+    config(['deploy.registry' => 'ghcr.io/rnd-experts-team']);
+    $this->seed(RoleSeeder::class);
+});
+
+const HEAD = 'a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0';
+
+/**
+ * Answers each command from a canned map (first matching needle wins) and
+ * records it. The digest and the branch head have sensible defaults.
+ */
+function scriptedRunner(array $responses = []): RecordingRunner
 {
-    return new class($responses) extends CommandRunner
-    {
-        /** @var list<string> */
-        public array $commands = [];
+    $responses += [
+        'rev-parse' => new CommandResult(0, HEAD."\n", '', 1),
+        'docker inspect' => new CommandResult(0, 'ghcr.io/rnd-experts-team/hiring@sha256:deadbeef', '', 1),
+    ];
 
-        public function __construct(private array $responses) {}
-
-        public function run($target, string $command, ?string $cwd = null, array $env = [], int $timeout = 60, ?Closure $onOutput = null): CommandResult
-        {
-            $this->commands[] = $command;
-
-            foreach ($this->responses as $needle => $response) {
-                if (str_contains($command, $needle)) {
-                    return $response;
-                }
+    return new RecordingRunner(function (string $command) use ($responses) {
+        foreach ($responses as $needle => $response) {
+            if (str_contains($command, $needle)) {
+                return $response;
             }
-
-            return new CommandResult(0, '', '', 1);
         }
-    };
+
+        return null;
+    });
 }
 
-function builderWith(CommandRunner $runner): ImageBuilder
+function builderWith(RecordingRunner $runner): ImageBuilder
 {
     return new ImageBuilder($runner, new MigrationClassifier, app(EnvResolver::class));
 }
 
-beforeEach(fn () => config(['deploy.registry' => 'ghcr.io/rnd-experts-team']));
+function runBuild(ImageBuilder $builder, Service $service, string $branch = 'testing', ?string $sha = HEAD, ?Stack $stack = null): Build
+{
+    $build = $builder->create($service, $branch, $sha, $stack);
+
+    return $builder->run($build, $build->task);
+}
 
 /*
 |--------------------------------------------------------------------------
-| Tags
+| Tags and numbers
 |--------------------------------------------------------------------------
 */
 
 test('a tag carries the commit, never the client', function () {
     $service = Service::factory()->create(['slug' => 'hiring']);
-    $builder = builderWith(scriptedRunner());
 
-    expect($builder->tagFor($service, 'a1b2c3d4e5f6a7b8'))->toBe('a1b2c3d');
+    expect(builderWith(scriptedRunner())->tagFor($service, 'a1b2c3d4e5f6a7b8'))->toBe('a1b2c3d');
 });
 
 test('an edition tag names the operating model', function () {
     $service = Service::factory()->create(['slug' => 'data']);
-    $builder = builderWith(scriptedRunner());
 
-    expect($builder->tagFor($service, 'a1b2c3d4e5f6', 'franchisee'))
+    expect(builderWith(scriptedRunner())->tagFor($service, 'a1b2c3d4e5f6', 'franchisee'))
         ->toBe('a1b2c3d-franchisee');
 });
 
@@ -76,135 +91,288 @@ test('a per-stack build is distinguished by the stack id, not the client name', 
     expect($tag)->not->toContain('acme');
 });
 
+test('builds are numbered per service and per edition', function () {
+    $service = Service::factory()->create(['slug' => 'hiring', 'name' => 'Hiring']);
+    $builder = builderWith(scriptedRunner());
+
+    $first = runBuild($builder, $service, sha: str_repeat('1', 40));
+    $second = runBuild($builder, $service, sha: str_repeat('2', 40));
+    $edition = runBuild($builder, $service, 'edition/two-step-approval', str_repeat('3', 40));
+
+    expect([$first->number, $second->number, $edition->number])->toBe([1, 2, 1]);
+    expect($second->label())->toBe('Hiring #2 (2222222)');
+    expect($edition->label())->toBe('Hiring/two-step-approval #1 (3333333)');
+    expect($edition->image_tag)->toBe('3333333-two-step-approval');
+});
+
 /*
 |--------------------------------------------------------------------------
-| Classification at build time
+| Fetch, classify, changelog
 |--------------------------------------------------------------------------
 */
 
+test('build now resolves the branch head after fetching, then checks out that exact commit', function () {
+    $service = Service::factory()->create(['slug' => 'hiring']);
+    $runner = scriptedRunner();
+
+    $build = runBuild(builderWith($runner), $service, sha: null);
+
+    expect($build->commit_sha)->toBe(HEAD);
+    // A branch name can move between classifying and building; the commit
+    // cannot.
+    expect($runner->transcript())->toContain("checkout --force '".HEAD."'");
+});
+
+test('a branch that does not exist fails the build', function () {
+    $service = Service::factory()->create();
+
+    $build = runBuild(builderWith(scriptedRunner(['rev-parse' => new CommandResult(128, '', 'unknown revision', 1)])), $service, sha: null);
+
+    expect($build->status)->toBe('failed');
+    expect($build->error)->toContain('does not exist');
+});
+
 test('a build records what its migrations will do before anyone deploys it', function () {
     $service = Service::factory()->create(['slug' => 'hiring']);
-
     $runner = scriptedRunner([
         'diff --name-only' => new CommandResult(0, "database/migrations/2026_10_01_drop.php\n", '', 1),
-        'git -C' => new CommandResult(0, '', '', 1),
-    ]);
-    // The `show` of the file content also matches 'git -C', so respond to it
-    // by ordering: the more specific needle is checked first above.
-    $runner = scriptedRunner([
-        'diff --name-only' => new CommandResult(0, "database/migrations/2026_10_01_drop.php\n", '', 1),
-        'show' => new CommandResult(0, "<?php Schema::table('goals', fn (\$t) => \$t->dropColumn('band'));", '', 1),
+        ' show ' => new CommandResult(0, "<?php Schema::table('goals', fn (\$t) => \$t->dropColumn('band'));", '', 1),
     ]);
 
-    $build = builderWith($runner)->prepare($service, 'testing', 'a1b2c3d4e5f6');
+    $build = runBuild(builderWith($runner), $service);
 
-    // Discovered now, not at six o'clock on a Friday.
     expect($build->migration_kind)->toBe(MigrationClassifier::KIND_DESTRUCTIVE);
     expect($build->affected_tables)->toBe(['goals']);
     expect($build->needsWindow())->toBeTrue();
 });
 
 test('a first build only classifies its own commit, not the whole history', function () {
-    $service = Service::factory()->create();
     $runner = scriptedRunner();
 
-    builderWith($runner)->prepare($service, 'testing', 'a1b2c3d4e5f6');
+    runBuild(builderWith($runner), Service::factory()->create());
 
-    $diff = collect($runner->commands)->first(fn ($c) => str_contains($c, 'diff --name-only'));
-
-    // Without this, the first build of an existing service would classify
-    // every migration ever written as destructive and demand a window.
-    expect($diff)->toContain("'a1b2c3d4e5f6'^!");
+    expect($runner->transcript())->toContain("diff --name-only --diff-filter=AM '".HEAD."^!'");
 });
 
-test('a later build compares against the last successful build, not the parent commit', function () {
+test('a later build compares against the last successful build, and lists the commits between', function () {
     $service = Service::factory()->create();
-
     Build::create([
         'service_id' => $service->id,
         'branch' => 'testing',
         'commit_sha' => 'older000000',
         'image_tag' => 'older00',
         'status' => 'success',
+        'number' => 7,
         'built_at' => now()->subDay(),
     ]);
+    $runner = scriptedRunner([
+        ' log ' => new CommandResult(0, "a1b2c3d\tSam\tAdd the shift export\nb2c3d4e\tAlex\tFix the rota total\n", '', 1),
+    ]);
 
-    $runner = scriptedRunner();
-    builderWith($runner)->prepare($service, 'testing', 'newer000000');
+    $build = runBuild(builderWith($runner), $service);
 
-    $diff = collect($runner->commands)->first(fn ($c) => str_contains($c, 'diff --name-only'));
-
-    // A release covering several merges must still see every migration it
-    // is about to run.
-    expect($diff)->toContain("'older000000'..'newer000000'");
+    expect($runner->transcript())->toContain("'older000000'..'".HEAD."'");
+    expect($build->number)->toBe(8);
+    expect($build->changelog)->toBe([
+        ['sha' => 'a1b2c3d', 'author' => 'Sam', 'subject' => 'Add the shift export'],
+        ['sha' => 'b2c3d4e', 'author' => 'Alex', 'subject' => 'Fix the rota total'],
+    ]);
 });
 
 /*
 |--------------------------------------------------------------------------
-| Building
+| Context, credentials, push
 |--------------------------------------------------------------------------
 */
 
-test('the build checks out the exact commit, not a branch', function () {
-    $service = Service::factory()->create(['slug' => 'hiring']);
+test('a repository without a Dockerfile builds with the control plane recipe', function () {
     $runner = scriptedRunner();
-    $builder = builderWith($runner);
 
-    $build = $builder->prepare($service, 'testing', 'a1b2c3d4e5f6');
-    $runner->commands = [];
-    $builder->build($build);
+    runBuild(builderWith($runner), Service::factory()->create(['dockerfile_path' => null]));
 
-    $fetch = collect($runner->commands)->first(fn ($c) => str_contains($c, 'checkout'));
+    expect($runner->transcript())
+        ->toContain('/.control-plane/Dockerfile')
+        ->toContain('FROM php:8.4-apache')
+        ->toContain("-f '".storage_path('app/private/workspaces'));
+});
 
-    // A branch name can move between classifying the migrations and building
-    // the image, which would ship different bytes than were classified.
-    expect($fetch)->toContain("checkout --force 'a1b2c3d4e5f6'");
+test('a repository Dockerfile overrides the recipe', function () {
+    $runner = scriptedRunner();
+
+    runBuild(builderWith($runner), Service::factory()->create(['slug' => 'data', 'dockerfile_path' => 'docker/Dockerfile.prod']));
+
+    expect($runner->transcript())
+        ->not->toContain('FROM php:8.4-apache')
+        ->toContain('/workspaces/data/docker/Dockerfile.prod');
+});
+
+test('a per-stack build bakes that stack values into the image, and only those', function () {
+    $stack = Stack::factory()->create();
+    $dashboard = Service::factory()->perStackBuild()->create(['slug' => 'dashboard']);
+    ServiceEnvDefinition::create(['service_id' => $dashboard->id, 'key' => 'NEXT_PUBLIC_BRAND', 'source' => 'literal', 'default_value' => 'Acme Pizza', 'required' => true, 'is_build_arg' => true]);
+    StackService::create(['stack_id' => $stack->id, 'service_id' => $dashboard->id, 'enabled' => true]);
+    $runner = scriptedRunner();
+
+    $build = runBuild(builderWith($runner), $dashboard, stack: $stack);
+
+    expect($runner->transcript())
+        ->toContain('.env.production.local')
+        ->toContain('NEXT_PUBLIC_BRAND=Acme Pizza')
+        ->toContain('FROM node:22');
+    expect($build->image_tag)->toEndWith('-s'.$stack->id);
+});
+
+test('tokens reach git and docker through the environment and never the log', function () {
+    Setting::put(Setting::GITHUB_TOKEN, 'github_pat_SECRET123');
+    Setting::put(Setting::REGISTRY_USERNAME, 'rnd-bot');
+    Setting::put(Setting::REGISTRY_PUSH_TOKEN, 'ghp_PUSHSECRET');
+    $runner = scriptedRunner();
+
+    $build = runBuild(builderWith($runner), Service::factory()->create());
+
+    expect($runner->transcript())->not->toContain('SECRET');
+    $envs = collect($runner->envs)->filter()->values();
+    expect($envs->firstWhere('GIT_CONFIG_KEY_0', 'http.https://github.com/.extraheader'))->not->toBeNull();
+    expect($envs->firstWhere('REGISTRY_TOKEN', 'ghp_PUSHSECRET'))->not->toBeNull();
+    expect($build->task->contents())->not->toContain('SECRET');
 });
 
 test('a successful build records the digest, which is what gets deployed', function () {
-    $service = Service::factory()->create(['slug' => 'hiring']);
-
-    $runner = scriptedRunner([
-        'docker inspect' => new CommandResult(0, 'ghcr.io/rnd-experts-team/hiring@sha256:deadbeef', '', 1),
-    ]);
-
-    $builder = builderWith($runner);
-    $build = $builder->build($builder->prepare($service, 'testing', 'a1b2c3d4e5f6'));
+    $build = runBuild(builderWith(scriptedRunner()), Service::factory()->create(['slug' => 'hiring']));
 
     expect($build->status)->toBe('success');
     expect($build->digest)->toBe('sha256:deadbeef');
     expect($build->reference())->toBe('ghcr.io/rnd-experts-team/hiring@sha256:deadbeef');
+    expect($build->task->fresh()->status)->toBe('succeeded');
 });
 
 test('a failed build records which step failed and never gets a digest', function () {
-    $service = Service::factory()->create();
-
-    $runner = scriptedRunner([
-        'docker build' => new CommandResult(1, '', 'no space left on device', 1),
-    ]);
-
-    $builder = builderWith($runner);
-    $build = $builder->build($builder->prepare($service, 'testing', 'a1b2c3d4e5f6'));
+    $build = runBuild(builderWith(scriptedRunner(['docker build' => new CommandResult(1, '', 'no space left on device', 1)])), Service::factory()->create());
 
     expect($build->status)->toBe('failed');
-    expect($build->error)->toContain('build:');
-    expect($build->error)->toContain('no space left');
-    // Nothing can be deployed from this, which is the point.
+    expect($build->error)->toContain('build:')->toContain('no space left');
     expect($build->digest)->toBeNull();
+    expect($build->task->fresh()->status)->toBe('failed');
 });
 
 test('a push that yields no digest is a failure, not a silent success', function () {
-    $service = Service::factory()->create();
+    $build = runBuild(builderWith(scriptedRunner(['docker inspect' => new CommandResult(1, '', 'no such image', 1)])), Service::factory()->create());
 
-    $runner = scriptedRunner([
-        'docker inspect' => new CommandResult(1, '', 'no such image', 1),
-    ]);
-
-    $builder = builderWith($runner);
-    $build = $builder->build($builder->prepare($service, 'testing', 'a1b2c3d4e5f6'));
-
-    // Without a digest there is nothing to pin, so "deployed the same image"
-    // could not be verified later.
     expect($build->status)->toBe('failed');
     expect($build->error)->toContain('no digest');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Webhook
+|--------------------------------------------------------------------------
+*/
+
+function push(string $repository, string $branch, string $secret = 'hook-secret', array $extra = []): TestResponse
+{
+    $body = json_encode(array_merge([
+        'ref' => 'refs/heads/'.$branch,
+        'after' => HEAD,
+        'deleted' => false,
+        'repository' => ['full_name' => $repository],
+    ], $extra));
+
+    return test()->call('POST', '/webhook/build', [], [], [], [
+        'CONTENT_TYPE' => 'application/json',
+        'HTTP_X_GITHUB_EVENT' => 'push',
+        'HTTP_X_HUB_SIGNATURE_256' => 'sha256='.hash_hmac('sha256', $body, $secret),
+    ], $body);
+}
+
+test('a push to the default branch builds the template, and deploys nothing', function () {
+    Bus::fake();
+    Setting::put(Setting::GITHUB_WEBHOOK_SECRET, 'hook-secret');
+    $service = Service::factory()->create(['repo_full_name' => 'RnD-Experts-Team/HiringPizza', 'default_branch' => 'testing']);
+
+    push('rnd-experts-team/hiringpizza', 'testing')->assertStatus(202);
+
+    $build = Build::sole();
+    expect($build)->service_id->toBe($service->id)->edition->toBeNull()->commit_sha->toBe(HEAD)->trigger->toBe('webhook');
+    Bus::assertDispatched(BuildJob::class);
+    expect(Release::count())->toBe(0);
+});
+
+test('a push to an edition branch builds that edition; other branches are ignored', function () {
+    Bus::fake();
+    Setting::put(Setting::GITHUB_WEBHOOK_SECRET, 'hook-secret');
+    Service::factory()->create(['repo_full_name' => 'RnD-Experts-Team/LC_PIZZA_DATA']);
+
+    push('RnD-Experts-Team/LC_PIZZA_DATA', 'edition/franchisee')->assertStatus(202);
+    push('RnD-Experts-Team/LC_PIZZA_DATA', 'feature/new-report')->assertStatus(202);
+
+    expect(Build::sole()->edition)->toBe('franchisee');
+});
+
+test('a per-stack service builds once per client running that edition', function () {
+    Bus::fake();
+    Setting::put(Setting::GITHUB_WEBHOOK_SECRET, 'hook-secret');
+    $dashboard = Service::factory()->perStackBuild()->create(['repo_full_name' => 'RnD-Experts-Team/b-dashboard-pizza']);
+    [$a, $b, $c] = Stack::factory()->count(3)->create();
+    StackService::create(['stack_id' => $a->id, 'service_id' => $dashboard->id, 'enabled' => true]);
+    StackService::create(['stack_id' => $b->id, 'service_id' => $dashboard->id, 'enabled' => true]);
+    StackService::create(['stack_id' => $c->id, 'service_id' => $dashboard->id, 'enabled' => true, 'edition' => 'franchisee']);
+
+    push('RnD-Experts-Team/b-dashboard-pizza', 'testing');
+
+    expect(Build::pluck('stack_id')->sort()->values()->all())->toBe([$a->id, $b->id]);
+});
+
+test('a bad signature is rejected exactly like an unknown repository', function () {
+    Bus::fake();
+    Setting::put(Setting::GITHUB_WEBHOOK_SECRET, 'hook-secret');
+    Service::factory()->create(['repo_full_name' => 'RnD-Experts-Team/HiringPizza']);
+
+    $forged = push('RnD-Experts-Team/HiringPizza', 'testing', 'wrong-secret');
+
+    $forged->assertNotFound();
+    expect(Build::count())->toBe(0);
+});
+
+test('no webhook secret configured means no webhook builds at all', function () {
+    Bus::fake();
+    Service::factory()->create(['repo_full_name' => 'RnD-Experts-Team/HiringPizza']);
+
+    push('RnD-Experts-Team/HiringPizza', 'testing', '')->assertNotFound();
+});
+
+/*
+|--------------------------------------------------------------------------
+| Build now
+|--------------------------------------------------------------------------
+*/
+
+test('build now queues a build of the branch head and opens its log', function () {
+    Bus::fake();
+    $service = Service::factory()->create(['default_branch' => 'testing']);
+
+    $response = $this->actingAs(actorWithRole('operator'))->post('/builds', ['service_id' => $service->id, 'branch' => 'testing']);
+
+    $build = Build::sole();
+    $response->assertRedirect('/tasks/'.$build->task_id);
+    expect($build->commit_sha)->toBeNull();
+    expect(Task::find($build->task_id)->type)->toBe(Task::TYPE_BUILD);
+    Bus::assertDispatched(BuildJob::class, fn ($job) => $job->buildId === $build->id);
+});
+
+test('build now refuses branches that are never deployed', function () {
+    Bus::fake();
+    $service = Service::factory()->create(['default_branch' => 'testing']);
+
+    $this->actingAs(actorWithRole('operator'))
+        ->post('/builds', ['service_id' => $service->id, 'branch' => 'feature/x'])
+        ->assertSessionHasErrors('branch');
+
+    Bus::assertNothingDispatched();
+});
+
+test('viewers can see builds but not start one', function () {
+    $service = Service::factory()->create();
+
+    $this->actingAs(actorWithRole('viewer'))->get('/builds')->assertOk();
+    $this->actingAs(actorWithRole('viewer'))->post('/builds', ['service_id' => $service->id, 'branch' => 'testing'])->assertForbidden();
 });

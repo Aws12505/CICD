@@ -16,7 +16,13 @@ type Field = {
     value: string | null;
 };
 
-export default function ControlPlaneSettings({ fields }: { fields: Field[] }) {
+export default function ControlPlaneSettings({
+    fields,
+    webhook_url,
+}: {
+    fields: Field[];
+    webhook_url: string;
+}) {
     const { data, setData, put, processing, errors } = useForm<
         Record<string, string | string[]>
     >({
@@ -128,6 +134,21 @@ export default function ControlPlaneSettings({ fields }: { fields: Field[] }) {
                                 <InputError message={errors[field.key]} />
                             </div>
                         ))}
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>GitHub webhook</CardTitle>
+                    </CardHeader>
+                    <CardContent className="grid gap-2 text-sm">
+                        <p className="text-muted-foreground">
+                            In each service repository: Settings → Webhooks →
+                            Add webhook. Payload URL below, content type
+                            application/json, the webhook secret above, push
+                            events only.
+                        </p>
+                        <p className="font-mono break-all">{webhook_url}</p>
                     </CardContent>
                 </Card>
 
