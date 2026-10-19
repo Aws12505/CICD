@@ -12,26 +12,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-/** Records the commands it is asked to run instead of running them. */
-class RecordingRunner extends CommandRunner
-{
-    /** @var list<string> */
-    public array $commands = [];
-
-    public function run(
-        Target $target,
-        string $command,
-        ?string $cwd = null,
-        array $env = [],
-        int $timeout = 60,
-        ?Closure $onOutput = null,
-    ): CommandResult {
-        $this->commands[] = $command;
-
-        return new CommandResult(0, '', '', 1);
-    }
-}
-
 function syncableStack(): Stack
 {
     config([

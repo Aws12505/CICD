@@ -4,7 +4,7 @@ import { LogViewer } from '@/components/log-viewer';
 import { Badge } from '@/components/ui/badge';
 import type { TaskStatus } from '@/types/task';
 
-const VARIANT: Record<
+export const TASK_STATUS_VARIANT: Record<
     TaskStatus,
     'default' | 'secondary' | 'destructive' | 'outline'
 > = {
@@ -65,7 +65,9 @@ export function TaskPanel({
     return (
         <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
-                <Badge variant={VARIANT[liveStatus]}>{liveStatus}</Badge>
+                <Badge variant={TASK_STATUS_VARIANT[liveStatus]}>
+                    {liveStatus}
+                </Badge>
                 {live && (
                     <span className="text-xs text-muted-foreground">
                         streaming live

@@ -9,6 +9,7 @@ import {
     ListChecks,
     Rocket,
     Server,
+    Settings2,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
@@ -77,6 +78,11 @@ const adminNavItems: NavItem[] = [
         title: 'Servers',
         href: '/servers',
         icon: Server,
+    },
+    {
+        title: 'Settings',
+        href: '/control-plane/settings',
+        icon: Settings2,
     },
 ];
 

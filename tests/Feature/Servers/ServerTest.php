@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Server;
+use App\Models\Stack;
 use App\Services\Remote\CommandResult;
 use App\Services\Remote\ServerProbe;
 use Database\Seeders\RoleSeeder;
@@ -37,7 +38,6 @@ function serverPayload(array $overrides = []): array
         'ip_address' => '10.0.0.4',
         'ssh_user' => 'deploy',
         'ssh_port' => 22,
-        'ssh_private_key' => "-----BEGIN OPENSSH PRIVATE KEY-----\nsecret\n-----END OPENSSH PRIVATE KEY-----",
     ], $overrides);
 }
 
@@ -69,15 +69,49 @@ test('servers are admin-only, even to look at', function () {
 |--------------------------------------------------------------------------
 */
 
-test('the private key is encrypted at rest', function () {
+test('the control plane generates the keypair and stores the private half encrypted', function () {
     $this->actingAs(actorWithRole('admin'))
-        ->post('/servers', serverPayload())
+        // A pasted key is ignored: nobody should be handling private keys.
+        ->post('/servers', serverPayload(['ssh_private_key' => 'pasted']))
         ->assertRedirect();
 
+    $server = Server::first();
     $stored = DB::table('servers')->value('ssh_private_key');
 
     expect($stored)->not->toContain('BEGIN OPENSSH PRIVATE KEY');
-    expect(Server::first()->ssh_private_key)->toContain('BEGIN OPENSSH PRIVATE KEY');
+    expect($server->ssh_private_key)
+        ->toContain('BEGIN OPENSSH PRIVATE KEY')
+        ->not->toContain('pasted');
+    expect($server->public_key)->toStartWith('ssh-ed25519 AAAA');
+});
+
+test('the paste command carries only the public key', function () {
+    $this->actingAs(actorWithRole('admin'))->post('/servers', serverPayload());
+    $server = Server::first();
+
+    $response = $this->get("/servers/{$server->id}")->assertOk();
+
+    $response->assertInertia(fn (Assert $page) => $page
+        ->where('server.public_key', $server->public_key)
+        ->where('server.authorize_command', fn (string $line) => str_contains($line, $server->public_key)
+            && str_contains($line, 'authorized_keys'))
+    );
+
+    expect($response->getContent())->not->toContain('PRIVATE KEY');
+});
+
+test('a new key replaces both halves and sends the server back to pending', function () {
+    $this->actingAs(actorWithRole('admin'))->post('/servers', serverPayload());
+    $server = Server::first();
+    $server->markOnline();
+    [$private, $public] = [$server->ssh_private_key, $server->public_key];
+
+    $this->post("/servers/{$server->id}/regenerate-key")->assertRedirect();
+
+    $server->refresh();
+    expect($server->ssh_private_key)->not->toBe($private);
+    expect($server->public_key)->not->toBe($public);
+    expect($server->status)->toBe('pending');
 });
 
 test('the private key never reaches the browser', function () {
@@ -121,17 +155,52 @@ test('moving a server to a different host discards the pinned key', function () 
         ->toBe('h ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample');
 });
 
-test('editing a server without re-pasting the key keeps the existing one', function () {
+test('editing a server cannot replace its private key', function () {
     $server = Server::factory()->verified()->create();
     $original = $server->ssh_private_key;
 
     $this->actingAs(actorWithRole('admin'))->put("/servers/{$server->id}", serverPayload([
         'hostname' => $server->hostname,
         'ssh_port' => $server->ssh_port,
-        'ssh_private_key' => '',
+        'ssh_private_key' => 'something else',
     ]));
 
     expect($server->fresh()->ssh_private_key)->toBe($original);
+});
+
+test('verify records what the server has installed', function () {
+    $this->probe->shouldReceive('capabilities')->once()->andReturn(['docker' => false, 'nginx' => true]);
+    $server = Server::factory()->verified()->create();
+
+    $this->actingAs(actorWithRole('admin'))
+        ->post("/servers/{$server->id}/check")
+        ->assertSessionHas('success');
+
+    expect($server->fresh()->capabilities)->toBe(['docker' => false, 'nginx' => true]);
+});
+
+test('verify explains a refused login', function () {
+    $this->probe->shouldReceive('check')->andReturnUsing(function (Server $server) {
+        $server->markUnreachable('Permission denied (publickey).');
+
+        return new CommandResult(255, '', 'Permission denied (publickey).', 5);
+    });
+    $server = Server::factory()->verified()->create();
+
+    $this->actingAs(actorWithRole('admin'))
+        ->post("/servers/{$server->id}/check")
+        ->assertSessionHas('error', fn (string $message) => str_contains($message, 'pasted'));
+});
+
+test('a server with stacks cannot be deleted', function () {
+    $server = Server::factory()->verified()->create();
+    Stack::factory()->create(['server_id' => $server->id]);
+
+    $this->actingAs(actorWithRole('admin'))
+        ->delete("/servers/{$server->id}")
+        ->assertSessionHas('error');
+
+    expect(Server::find($server->id))->not->toBeNull();
 });
 
 /*

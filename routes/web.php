@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ClientController;
+use App\Http\Controllers\ControlPlaneSettingsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\OperationsController;
 use App\Http\Controllers\PipelineController;
@@ -137,6 +138,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('servers/{server}', [ServerController::class, 'destroy'])->name('servers.destroy');
         Route::post('servers/{server}/check', [ServerController::class, 'check'])->name('servers.check');
         Route::post('servers/{server}/rescan', [ServerController::class, 'rescan'])->name('servers.rescan');
+        Route::post('servers/{server}/regenerate-key', [ServerController::class, 'regenerateKey'])->name('servers.regenerate-key');
+        Route::post('servers/{server}/provision', [ServerController::class, 'provision'])->name('servers.provision');
+
+        // GitHub and registry tokens, the certificate email: credentials that
+        // reach every client.
+        Route::get('control-plane/settings', [ControlPlaneSettingsController::class, 'edit'])->name('control-plane-settings.edit');
+        Route::put('control-plane/settings', [ControlPlaneSettingsController::class, 'update'])->name('control-plane-settings.update');
     });
 
     /*

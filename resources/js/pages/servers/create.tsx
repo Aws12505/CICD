@@ -12,9 +12,8 @@ export default function ServerCreate() {
         name: '',
         hostname: '',
         ip_address: '',
-        ssh_user: 'deploy',
+        ssh_user: 'root',
         ssh_port: 22,
-        ssh_private_key: '',
         notes: '',
     });
 
@@ -32,8 +31,9 @@ export default function ServerCreate() {
                         Add server
                     </h1>
                     <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                        The host key is read as soon as this is saved, so every
-                        later connection can be pinned to it.
+                        The control plane makes a key for this server. Next you
+                        paste one line into the server as root, then click
+                        Verify.
                     </p>
                 </div>
 
@@ -95,6 +95,9 @@ export default function ServerCreate() {
                                     }
                                 />
                                 <InputError message={errors.ssh_user} />
+                                <p className="text-xs text-muted-foreground">
+                                    Setting up a server needs root.
+                                </p>
                             </div>
                             <div className="grid gap-2">
                                 <Label htmlFor="ssh_port">SSH port</Label>
@@ -119,32 +122,13 @@ export default function ServerCreate() {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Private key</CardTitle>
+                        <CardTitle>Notes</CardTitle>
                     </CardHeader>
                     <CardContent className="grid gap-4">
                         <div className="grid gap-2">
-                            <Textarea
-                                id="ssh_private_key"
-                                rows={8}
-                                className="font-mono text-xs"
-                                value={data.ssh_private_key}
-                                onChange={(e) =>
-                                    setData('ssh_private_key', e.target.value)
-                                }
-                                placeholder={
-                                    '-----BEGIN OPENSSH PRIVATE KEY-----'
-                                }
-                            />
-                            <InputError message={errors.ssh_private_key} />
-                            <p className="text-xs text-muted-foreground">
-                                Encrypted before it is stored, and never sent
-                                back to the browser. Use a key dedicated to this
-                                control plane so it can be revoked on its own.
-                            </p>
-                        </div>
-
-                        <div className="grid gap-2">
-                            <Label htmlFor="notes">Notes (optional)</Label>
+                            <Label htmlFor="notes">
+                                Anything worth knowing (optional)
+                            </Label>
                             <Textarea
                                 id="notes"
                                 rows={2}

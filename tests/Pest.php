@@ -4,6 +4,8 @@ use App\Contracts\Invocation;
 use App\Contracts\Target;
 use App\Models\Project;
 use App\Models\User;
+use App\Services\Remote\CommandResult;
+use App\Services\Remote\CommandRunner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -76,6 +78,61 @@ final class NullTarget implements Target
     }
 
     public function cleanup(): void {}
+}
+
+/**
+ * Records the commands it is asked to run instead of running them.
+ *
+ * Every command succeeds with no output unless $respond returns a result for
+ * it, which lets a test script one answer (a health status, a failure).
+ */
+class RecordingRunner extends CommandRunner
+{
+    /** @var list<string> */
+    public array $commands = [];
+
+    /** @var list<array<string, string|int>> */
+    public array $envs = [];
+
+    /** @param  (Closure(string): ?CommandResult)|null  $respond */
+    public function __construct(public ?Closure $respond = null) {}
+
+    public function run(
+        Target $target,
+        string $command,
+        ?string $cwd = null,
+        array $env = [],
+        int $timeout = 60,
+        ?Closure $onOutput = null,
+    ): CommandResult {
+        $this->commands[] = $command;
+        $this->envs[] = $env;
+
+        return ($this->respond ? ($this->respond)($command) : null)
+            ?? new CommandResult(0, '', '', 1);
+    }
+
+    /** Every command with its base64 payloads decoded, for searching. */
+    public function transcript(): string
+    {
+        return implode('
+', array_map(fn (string $c) => self::decode($c), $this->commands));
+    }
+
+    /**
+     * A command with its quoted base64 payloads decoded. Twice, because the
+     * NATS script is base64 inside an argument that is itself quoted.
+     */
+    public static function decode(string $command): string
+    {
+        $once = fn (string $text): string => preg_replace_callback(
+            "#'([A-Za-z0-9+/]{16,}={0,2})'#",
+            fn (array $m): string => "'".base64_decode($m[1])."'",
+            $text,
+        );
+
+        return $once($once($command));
+    }
 }
 
 /** A project with a known webhook secret, for signature tests. */

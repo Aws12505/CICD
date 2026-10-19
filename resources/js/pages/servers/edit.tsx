@@ -15,7 +15,6 @@ export default function ServerEdit({ server }: { server: ServerDetail }) {
         ip_address: server.ip_address ?? '',
         ssh_user: server.ssh_user,
         ssh_port: server.ssh_port,
-        ssh_private_key: '',
         notes: server.notes ?? '',
     });
 
@@ -125,29 +124,6 @@ export default function ServerEdit({ server }: { server: ServerDetail }) {
                                 current key belongs to the old address.
                             </p>
                         )}
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Replace private key</CardTitle>
-                    </CardHeader>
-                    <CardContent className="grid gap-2">
-                        <Textarea
-                            id="ssh_private_key"
-                            rows={6}
-                            className="font-mono text-xs"
-                            value={data.ssh_private_key}
-                            onChange={(e) =>
-                                setData('ssh_private_key', e.target.value)
-                            }
-                            placeholder="Leave blank to keep the current key"
-                        />
-                        <InputError message={errors.ssh_private_key} />
-                        <p className="text-xs text-muted-foreground">
-                            The stored key is never shown. Leave this empty
-                            unless you are rotating it.
-                        </p>
                     </CardContent>
                 </Card>
 

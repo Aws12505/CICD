@@ -2,9 +2,11 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasGeneratedSecrets;
 use App\Targets\SshTarget;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * A machine the control plane can reach over SSH.
@@ -14,7 +16,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class Server extends Model
 {
-    use HasFactory;
+    use HasFactory, HasGeneratedSecrets;
 
     protected $fillable = [
         'name',
@@ -23,11 +25,14 @@ class Server extends Model
         'ssh_user',
         'ssh_port',
         'ssh_private_key',
+        'public_key',
         'host_key',
         'status',
         'last_seen_at',
         'last_error',
         'notes',
+        'capabilities',
+        'provisioned_at',
     ];
 
     /**
@@ -37,6 +42,7 @@ class Server extends Model
     protected $hidden = [
         'ssh_private_key',
         'host_key',
+        'secrets',
     ];
 
     /**
@@ -46,9 +52,34 @@ class Server extends Model
     {
         return [
             'ssh_private_key' => 'encrypted',
+            'secrets' => 'encrypted:array',
+            'capabilities' => 'array',
             'ssh_port' => 'integer',
             'last_seen_at' => 'datetime',
+            'provisioned_at' => 'datetime',
         ];
+    }
+
+    public function stacks(): HasMany
+    {
+        return $this->hasMany(Stack::class);
+    }
+
+    /** The line to paste into the VPS so the control plane can log in. */
+    public function authorizeCommand(): ?string
+    {
+        if (blank($this->public_key)) {
+            return null;
+        }
+
+        return 'mkdir -p ~/.ssh && chmod 700 ~/.ssh && '
+            ."echo '".trim($this->public_key)."' >> ~/.ssh/authorized_keys && "
+            .'chmod 600 ~/.ssh/authorized_keys';
+    }
+
+    public function isProvisioned(): bool
+    {
+        return $this->provisioned_at !== null;
     }
 
     /**

@@ -2,14 +2,27 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\ProvisionServerJob;
 use App\Models\Server;
+use App\Models\Stack;
+use App\Models\Task;
 use App\Services\Remote\ServerProbe;
+use App\Support\SshKeypair;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
+/**
+ * Servers, and the three clicks that make one usable (decision 17):
+ *
+ *  1. Add — the control plane generates a keypair and shows the one line to
+ *     paste into the VPS provider's web console. The private half never
+ *     leaves this database.
+ *  2. Verify — pin the host key, log in, record what is installed.
+ *  3. Set up server — the provisioning run, queued and streamed to a task.
+ */
 class ServerController extends Controller
 {
     public function __construct(private readonly ServerProbe $probe) {}
@@ -33,28 +46,41 @@ class ServerController extends Controller
     {
         $data = $this->validated($request);
 
-        $server = Server::create($data + ['status' => 'pending']);
+        $keypair = SshKeypair::generate('control-plane@'.$data['hostname']);
 
-        // Learn the host key immediately so the very next connection can pin
-        // it. A server whose key was never captured is one every later
-        // connection would have to trust blindly.
+        $server = Server::create($data + [
+            'status' => 'pending',
+            'ssh_private_key' => $keypair->privateKey,
+            'public_key' => $keypair->publicKey,
+        ]);
+
+        // Reading the host key needs no login, so it can be pinned before the
+        // public key is even pasted.
         $this->probe->captureHostKey($server);
-
-        if ($server->isVerified()) {
-            $this->probe->check($server);
-        }
 
         return redirect()
             ->route('servers.show', $server)
-            ->with('success', 'Server added.');
+            ->with('success', 'Server added. Paste the command below into the server, then click Verify.');
     }
 
     public function show(Server $server): Response
     {
+        $provisioning = $this->provisionTasks($server)->latest('id')->first();
+
         return Inertia::render('servers/show', [
             'server' => $this->summarise($server) + [
                 'notes' => $server->notes,
                 'last_error' => $server->last_error,
+                'public_key' => $server->public_key,
+                'authorize_command' => $server->authorizeCommand(),
+                'capabilities' => $server->capabilities,
+                'provisioned_at' => $server->provisioned_at?->toIso8601String(),
+                'stacks' => $server->stacks()->with('client')->get()->map(fn (Stack $stack) => [
+                    'id' => $stack->id,
+                    'label' => $stack->label(),
+                    'status' => $stack->status,
+                ]),
+                'last_provision' => $provisioning ? TaskController::summarise($provisioning) : null,
             ],
         ]);
     }
@@ -69,12 +95,6 @@ class ServerController extends Controller
     public function update(Request $request, Server $server): RedirectResponse
     {
         $data = $this->validated($request, $server);
-
-        // Leaving the key field blank keeps the existing one, so editing a
-        // hostname does not force someone to paste a private key again.
-        if (blank($data['ssh_private_key'] ?? null)) {
-            unset($data['ssh_private_key']);
-        }
 
         $reachabilityChanged = $server->hostname !== $data['hostname']
             || $server->ssh_port !== (int) $data['ssh_port'];
@@ -96,12 +116,19 @@ class ServerController extends Controller
 
     public function destroy(Server $server): RedirectResponse
     {
+        if ($server->stacks()->exists()) {
+            return back()->with('error', 'Move or remove the stacks on this server first.');
+        }
+
         $server->delete();
 
         return redirect()->route('servers.index')->with('success', 'Server removed.');
     }
 
-    /** Re-run the connection check on demand. */
+    /**
+     * Verify: pin the host key if it is not yet, log in with the generated
+     * key, and record what the server has installed.
+     */
     public function check(Server $server): RedirectResponse
     {
         if (! $server->isVerified()) {
@@ -114,9 +141,13 @@ class ServerController extends Controller
 
         $result = $this->probe->check($server);
 
-        return $result->successful()
-            ? back()->with('success', 'Connected: '.$result->output())
-            : back()->with('error', 'Connection failed: '.$result->failureReason());
+        if ($result->failed()) {
+            return back()->with('error', 'Could not log in. Has the command been pasted on the server, as root? '.$result->failureReason());
+        }
+
+        $server->forceFill(['capabilities' => $this->probe->capabilities($server)])->save();
+
+        return back()->with('success', 'Connected: '.$result->output());
     }
 
     /** Forget the pinned host key and learn it again. */
@@ -129,6 +160,54 @@ class ServerController extends Controller
         return $server->isVerified()
             ? back()->with('success', 'Host key re-captured.')
             : back()->with('error', 'Could not read the host key: '.($server->last_error ?? 'unknown error'));
+    }
+
+    /**
+     * Replace the keypair, e.g. after a suspected leak. The old public key
+     * stays in the server's authorized_keys until someone removes it; the new
+     * one has to be pasted before the server can be reached again.
+     */
+    public function regenerateKey(Server $server): RedirectResponse
+    {
+        $keypair = SshKeypair::generate('control-plane@'.$server->hostname);
+
+        $server->forceFill([
+            'ssh_private_key' => $keypair->privateKey,
+            'public_key' => $keypair->publicKey,
+            'status' => 'pending',
+        ])->save();
+
+        return back()->with('success', 'New key generated. Paste the new command on the server, then click Verify.');
+    }
+
+    /** Set up server: queue the provisioning run and open its live log. */
+    public function provision(Request $request, Server $server): RedirectResponse
+    {
+        if (! $server->isVerified() || $server->status !== 'online') {
+            return back()->with('error', 'Verify the server first.');
+        }
+
+        // A second click while one is running opens the running one rather
+        // than racing it.
+        $running = $this->provisionTasks($server)->whereIn('status', ['queued', 'running'])->first();
+
+        if ($running) {
+            return redirect()->route('tasks.show', $running);
+        }
+
+        $task = Task::begin(Task::TYPE_PROVISION, "Set up {$server->name}", $server, $request->user());
+
+        ProvisionServerJob::dispatch($server->id, $task->id);
+
+        return redirect()->route('tasks.show', $task);
+    }
+
+    private function provisionTasks(Server $server)
+    {
+        return Task::query()
+            ->where('type', Task::TYPE_PROVISION)
+            ->where('subject_type', $server->getMorphClass())
+            ->where('subject_id', $server->id);
     }
 
     /**
@@ -145,6 +224,7 @@ class ServerController extends Controller
             'ssh_port' => $server->ssh_port,
             'status' => $server->status,
             'verified' => $server->isVerified(),
+            'provisioned' => $server->isProvisioned(),
             // The fingerprint is safe to show and is what someone compares out
             // of band; the key itself never leaves the server row.
             'host_key_fingerprint' => $this->fingerprint($server),
@@ -189,7 +269,6 @@ class ServerController extends Controller
                     fn ($query) => $query->where('hostname', $request->input('hostname'))
                 )->ignore($server?->id),
             ],
-            'ssh_private_key' => [$server ? 'nullable' : 'required', 'string'],
             'notes' => ['nullable', 'string'],
         ]);
     }

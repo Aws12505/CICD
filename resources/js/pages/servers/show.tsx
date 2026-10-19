@@ -1,6 +1,18 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { KeyRound, Pencil, PlugZap } from 'lucide-react';
+import {
+    CheckCircle2,
+    Circle,
+    Copy,
+    KeyRound,
+    Pencil,
+    PlugZap,
+    RefreshCw,
+    Wrench,
+} from 'lucide-react';
+import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { ServerStatusBadge } from '@/components/server-status-badge';
+import { TASK_STATUS_VARIANT } from '@/components/task-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,7 +27,66 @@ function Field({ label, value }: { label: string; value: string }) {
     );
 }
 
+function Step({
+    n,
+    title,
+    done,
+    children,
+}: {
+    n: number;
+    title: string;
+    done: boolean;
+    children: ReactNode;
+}) {
+    return (
+        <div className="flex gap-4">
+            <div className="pt-0.5">
+                {done ? (
+                    <CheckCircle2 className="size-5 text-emerald-600" />
+                ) : (
+                    <Circle className="size-5 text-muted-foreground" />
+                )}
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <div className="font-medium">
+                    {n}. {title}
+                </div>
+                {children}
+            </div>
+        </div>
+    );
+}
+
+function CopyLine({ text }: { text: string }) {
+    const [copied, setCopied] = useState(false);
+
+    return (
+        <div className="flex items-start gap-2">
+            <pre className="min-w-0 flex-1 overflow-x-auto rounded-md border border-sidebar-border/70 bg-muted/40 p-3 font-mono text-xs break-all whitespace-pre-wrap">
+                {text}
+            </pre>
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                    void navigator.clipboard.writeText(text).then(() => {
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 1500);
+                    });
+                }}
+            >
+                <Copy className="size-4" /> {copied ? 'Copied' : 'Copy'}
+            </Button>
+        </div>
+    );
+}
+
 export default function ServerShow({ server }: { server: ServerDetail }) {
+    const online = server.status === 'online';
+    const provision = server.last_provision;
+    const provisioning =
+        provision?.status === 'queued' || provision?.status === 'running';
+
     return (
         <>
             <Head title={server.name} />
@@ -27,6 +98,9 @@ export default function ServerShow({ server }: { server: ServerDetail }) {
                                 {server.name}
                             </h1>
                             <ServerStatusBadge status={server.status} />
+                            {server.provisioned && (
+                                <Badge variant="secondary">set up</Badge>
+                            )}
                         </div>
                         <p className="mt-1 font-mono text-sm text-muted-foreground">
                             {server.ssh_user}@{server.hostname}:
@@ -34,14 +108,6 @@ export default function ServerShow({ server }: { server: ServerDetail }) {
                         </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                        <Button
-                            variant="outline"
-                            onClick={() =>
-                                router.post(`/servers/${server.id}/check`)
-                            }
-                        >
-                            <PlugZap className="size-4" /> Test connection
-                        </Button>
                         <Button asChild variant="outline">
                             <Link href={`/servers/${server.id}/edit`}>
                                 <Pencil className="size-4" /> Edit
@@ -50,7 +116,7 @@ export default function ServerShow({ server }: { server: ServerDetail }) {
                     </div>
                 </div>
 
-                {server.last_error && (
+                {server.last_error && !online && (
                     <Card className="border-destructive/40 bg-destructive/5">
                         <CardContent className="p-4">
                             <p className="text-xs tracking-wide text-muted-foreground uppercase">
@@ -59,6 +125,143 @@ export default function ServerShow({ server }: { server: ServerDetail }) {
                             <p className="mt-1 font-mono text-sm break-all">
                                 {server.last_error}
                             </p>
+                        </CardContent>
+                    </Card>
+                )}
+
+                <Card>
+                    <CardHeader className="border-b border-sidebar-border/70">
+                        <CardTitle>Get this server ready</CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-6 pt-6">
+                        <Step
+                            n={1}
+                            title="Let the control plane in"
+                            done={online}
+                        >
+                            <p className="text-sm text-muted-foreground">
+                                Open the server's console at your VPS provider,
+                                log in as root and paste this line. It adds the
+                                control plane's public key, nothing else.
+                            </p>
+                            {server.authorize_command ? (
+                                <CopyLine text={server.authorize_command} />
+                            ) : (
+                                <p className="text-sm text-muted-foreground">
+                                    This server has no generated key. Generate
+                                    one below.
+                                </p>
+                            )}
+                        </Step>
+
+                        <Step n={2} title="Verify" done={online}>
+                            <p className="text-sm text-muted-foreground">
+                                Pins the server's host key, logs in with the new
+                                key and checks what is installed.
+                            </p>
+                            <div>
+                                <Button
+                                    variant={online ? 'outline' : 'default'}
+                                    onClick={() =>
+                                        router.post(
+                                            `/servers/${server.id}/check`,
+                                        )
+                                    }
+                                >
+                                    <PlugZap className="size-4" /> Verify
+                                </Button>
+                            </div>
+                            {server.capabilities && (
+                                <div className="flex flex-wrap gap-2">
+                                    {Object.entries(server.capabilities).map(
+                                        ([name, present]) => (
+                                            <Badge
+                                                key={name}
+                                                variant={
+                                                    present
+                                                        ? 'secondary'
+                                                        : 'outline'
+                                                }
+                                            >
+                                                {name}: {present ? 'yes' : 'no'}
+                                            </Badge>
+                                        ),
+                                    )}
+                                </div>
+                            )}
+                        </Step>
+
+                        <Step
+                            n={3}
+                            title="Set up server"
+                            done={server.provisioned}
+                        >
+                            <p className="text-sm text-muted-foreground">
+                                Installs Docker, nginx and certbot, locks SSH to
+                                the control plane, and starts the shared MySQL,
+                                Redis and NATS with a user and streams for every
+                                stack on this server. Safe to run again at any
+                                time; a second run changes nothing that is
+                                already right.
+                            </p>
+                            <div className="flex flex-wrap items-center gap-3">
+                                <Button
+                                    disabled={!online && !provisioning}
+                                    variant={
+                                        server.provisioned
+                                            ? 'outline'
+                                            : 'default'
+                                    }
+                                    onClick={() =>
+                                        router.post(
+                                            `/servers/${server.id}/provision`,
+                                        )
+                                    }
+                                >
+                                    <Wrench className="size-4" />{' '}
+                                    {provisioning
+                                        ? 'Open the running setup'
+                                        : server.provisioned
+                                          ? 'Run setup again'
+                                          : 'Set up server'}
+                                </Button>
+                                {provision && (
+                                    <Link
+                                        href={`/tasks/${provision.id}`}
+                                        className="flex items-center gap-2 text-sm underline-offset-4 hover:underline"
+                                    >
+                                        Last run
+                                        <Badge
+                                            variant={
+                                                TASK_STATUS_VARIANT[
+                                                    provision.status
+                                                ]
+                                            }
+                                        >
+                                            {provision.status}
+                                        </Badge>
+                                        {provision.finished_at &&
+                                            new Date(
+                                                provision.finished_at,
+                                            ).toLocaleString()}
+                                    </Link>
+                                )}
+                            </div>
+                        </Step>
+                    </CardContent>
+                </Card>
+
+                {server.stacks && server.stacks.length > 0 && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Stacks on this server</CardTitle>
+                        </CardHeader>
+                        <CardContent className="flex flex-wrap gap-2">
+                            {server.stacks.map((stack) => (
+                                <Badge key={stack.id} variant="outline">
+                                    {stack.label} · {stack.status}
+                                </Badge>
+                            ))}
                         </CardContent>
                     </Card>
                 )}
@@ -89,35 +292,46 @@ export default function ServerShow({ server }: { server: ServerDetail }) {
                 <Card>
                     <CardHeader className="border-b border-sidebar-border/70">
                         <div className="flex items-center justify-between">
-                            <CardTitle>Host key</CardTitle>
+                            <CardTitle>Keys</CardTitle>
                             {server.verified ? (
-                                <Badge variant="secondary">pinned</Badge>
+                                <Badge variant="secondary">
+                                    host key pinned
+                                </Badge>
                             ) : (
-                                <Badge variant="destructive">not pinned</Badge>
+                                <Badge variant="destructive">
+                                    host key not pinned
+                                </Badge>
                             )}
                         </div>
                     </CardHeader>
-                    <CardContent className="grid gap-3 pt-6">
-                        {server.verified ? (
-                            <>
-                                <p className="font-mono text-sm break-all">
-                                    {server.host_key_fingerprint}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                    Compare this against the fingerprint the
-                                    machine itself reports before trusting it.
-                                    Every connection is pinned to this key, so a
-                                    rebuilt server will fail to connect until
-                                    the key is re-read.
-                                </p>
-                            </>
-                        ) : (
+                    <CardContent className="grid gap-4 pt-6">
+                        <div className="grid gap-1">
                             <p className="text-xs text-muted-foreground">
-                                No host key recorded. Connections cannot be
-                                pinned and will accept whatever answers.
+                                Server's host key
                             </p>
+                            <p className="font-mono text-sm break-all">
+                                {server.host_key_fingerprint ??
+                                    'Not recorded yet.'}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                                Compare this with what the server reports
+                                (`ssh-keygen -lf
+                                /etc/ssh/ssh_host_ed25519_key.pub`). A rebuilt
+                                server fails to connect until the key is read
+                                again.
+                            </p>
+                        </div>
+                        {server.public_key && (
+                            <div className="grid gap-1">
+                                <p className="text-xs text-muted-foreground">
+                                    Control plane's public key for this server
+                                </p>
+                                <p className="font-mono text-xs break-all">
+                                    {server.public_key}
+                                </p>
+                            </div>
                         )}
-                        <div>
+                        <div className="flex flex-wrap gap-2">
                             <Button
                                 variant="outline"
                                 size="sm"
@@ -129,6 +343,23 @@ export default function ServerShow({ server }: { server: ServerDetail }) {
                                 {server.verified
                                     ? 'Re-read host key'
                                     : 'Read host key'}
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                    if (
+                                        confirm(
+                                            'Generate a new key? The control plane cannot reach this server again until the new command is pasted on it.',
+                                        )
+                                    ) {
+                                        router.post(
+                                            `/servers/${server.id}/regenerate-key`,
+                                        );
+                                    }
+                                }}
+                            >
+                                <RefreshCw className="size-4" /> New key
                             </Button>
                         </div>
                     </CardContent>

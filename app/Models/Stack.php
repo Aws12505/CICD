@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasGeneratedSecrets;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -15,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class Stack extends Model
 {
-    use HasFactory;
+    use HasFactory, HasGeneratedSecrets;
 
     public const TIER_LIVE = 'live';
 
@@ -28,14 +29,37 @@ class Stack extends Model
         'compose_project',
         'port_range_start',
         'status',
+        'pinned',
     ];
+
+    protected $hidden = ['secrets'];
 
     /**
      * @return array<string, string>
      */
     protected function casts(): array
     {
-        return ['port_range_start' => 'integer'];
+        return [
+            'port_range_start' => 'integer',
+            'secrets' => 'encrypted:array',
+            'pinned' => 'boolean',
+        ];
+    }
+
+    /**
+     * This stack's MySQL and Redis user. One per stack, granted only its own
+     * databases and its own key prefix, so testing cannot reach live data on
+     * the shared instances.
+     */
+    public function dataUser(): string
+    {
+        return $this->compose_project;
+    }
+
+    /** Every Redis key this stack writes starts with this. */
+    public function redisPrefix(): string
+    {
+        return $this->compose_project.':';
     }
 
     public function client(): BelongsTo
