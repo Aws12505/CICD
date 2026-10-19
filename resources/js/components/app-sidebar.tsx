@@ -3,6 +3,7 @@ import {
     Activity,
     Boxes,
     Building2,
+    History,
     Layers,
     LayoutGrid,
     ListChecks,
@@ -61,6 +62,11 @@ const mainNavItems: NavItem[] = [
         title: 'Operations',
         href: '/operations',
         icon: Activity,
+    },
+    {
+        title: 'Activity',
+        href: '/tasks',
+        icon: History,
     },
 ];
 

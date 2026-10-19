@@ -9,6 +9,7 @@ use App\Http\Controllers\ReleaseController;
 use App\Http\Controllers\RunController;
 use App\Http\Controllers\ServerController;
 use App\Http\Controllers\ServiceController;
+use App\Http\Controllers\TaskController;
 use Illuminate\Support\Facades\Route;
 
 // Route::redirect rather than a closure: closures cannot be route-cached, and
@@ -27,6 +28,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('runs', [RunController::class, 'index'])->name('runs.index');
     Route::get('runs/{run}', [RunController::class, 'show'])->name('runs.show');
+
+    Route::get('tasks', [TaskController::class, 'index'])->name('tasks.index');
+    Route::get('tasks/{task}', [TaskController::class, 'show'])->name('tasks.show');
 
     /*
     |------------------------------------------------------------------

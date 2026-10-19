@@ -2,6 +2,7 @@
 
 use App\Broadcasting\PipelineRunChannel;
 use App\Broadcasting\PipelineRunsChannel;
+use App\Broadcasting\TaskChannel;
 use Illuminate\Support\Facades\Broadcast;
 
 Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
@@ -29,3 +30,7 @@ Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
 Broadcast::channel('pipeline.run.{runId}', PipelineRunChannel::class);
 
 Broadcast::channel('pipeline.runs', PipelineRunsChannel::class);
+
+// Every long-running control-plane action: provisioning, builds, releases,
+// restores. Same rule as pipeline runs.
+Broadcast::channel('task.{taskId}', TaskChannel::class);
