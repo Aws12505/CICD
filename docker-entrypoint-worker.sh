@@ -12,9 +12,19 @@ mkdir -p \
 
 touch /var/www/html/storage/logs/laravel.log
 
-if [ ! -d /var/www/html/vendor ]; then
-  composer install --no-dev --optimize-autoloader --no-interaction
-fi
+# Same lock and rule as the backend: it shares this directory and starts at
+# the same moment.
+(
+  flock -x 9
+  AUTOLOAD=/var/www/html/vendor/autoload.php
+  if [ ! -f "$AUTOLOAD" ] || [ /var/www/html/composer.lock -nt "$AUTOLOAD" ]; then
+    echo "📦 Composer packages are missing or out of date — installing."
+    if ! composer install --no-dev --optimize-autoloader --no-interaction; then
+      echo "⚠️  composer install failed. Continuing, but anything using a missing package will error."
+    fi
+    touch "$AUTOLOAD" 2>/dev/null || true
+  fi
+) 9>/var/www/html/storage/.boot-deps.lock
 
 php artisan config:clear || true
 

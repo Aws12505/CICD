@@ -12,10 +12,25 @@ mkdir -p \
 
 touch /var/www/html/storage/logs/laravel.log
 
-# Composer deps (in case vendor is not committed)
-if [ ! -d /var/www/html/vendor ]; then
-  composer install --no-dev --optimize-autoloader --no-interaction
-fi
+# Composer deps. vendor/ is not committed, and it has to be refreshed whenever
+# composer.lock moves — checking only that the directory exists meant a new
+# package (phpseclib, for server keys) was never installed on a server that
+# already had a vendor/ from before.
+#
+# The backend and the worker share this directory and start together, so the
+# install runs under a lock: whichever gets it first installs, the other waits
+# and then finds nothing to do.
+(
+  flock -x 9
+  AUTOLOAD=/var/www/html/vendor/autoload.php
+  if [ ! -f "$AUTOLOAD" ] || [ /var/www/html/composer.lock -nt "$AUTOLOAD" ]; then
+    echo "📦 Composer packages are missing or out of date — installing."
+    if ! composer install --no-dev --optimize-autoloader --no-interaction; then
+      echo "⚠️  composer install failed. Continuing, but anything using a missing package will error."
+    fi
+    touch "$AUTOLOAD" 2>/dev/null || true
+  fi
+) 9>/var/www/html/storage/.boot-deps.lock
 
 # Build the React/Inertia frontend, but only when it is actually stale.
 # This used to run on every boot, adding minutes to each restart and turning a
@@ -25,8 +40,18 @@ if [ ! -f "$FRONTEND_MANIFEST" ] \
    || [ /var/www/html/package-lock.json -nt "$FRONTEND_MANIFEST" ] \
    || [ /var/www/html/package.json -nt "$FRONTEND_MANIFEST" ]; then
   echo "📦 Frontend build is missing or stale — rebuilding."
-  npm install --no-audit --no-fund
-  npm run build
+  # A failed build must not kill the container: with `set -e` it used to, and
+  # Docker then restarted it forever, hiding the actual npm error. Keep the
+  # old build (if there is one) serving and say plainly what happened.
+  if ! (npm install --no-audit --no-fund && npm run build); then
+    echo "⚠️  The frontend build FAILED (output above)."
+    if [ -f "$FRONTEND_MANIFEST" ]; then
+      echo "⚠️  Serving the previous build. Fix it with: docker exec CICD sh -c 'npm install && npm run build'"
+    else
+      echo "⚠️  There is no previous build, so pages will not load until this is fixed:"
+      echo "⚠️    docker exec CICD sh -c 'npm install && npm run build'"
+    fi
+  fi
 else
   echo "📦 Frontend build is current — skipping."
 fi

@@ -28,8 +28,13 @@ const IDLE_MS = Number(process.env.IDLE_TIMEOUT_SECONDS || 1800) * 1000;
 const MAX_MS = Number(process.env.MAX_SESSION_SECONDS || 4 * 3600) * 1000;
 
 if (SECRET.length < 32) {
-  console.error('TERMINAL_GATEWAY_SECRET must be set (32+ characters), the same value as in Laravel.');
-  process.exit(1);
+  // Not an exit: under `restart: unless-stopped` that is a crash loop that
+  // hides this message. Stay up, say what is missing, and serve nothing.
+  console.error(
+    'The terminal is switched off: set TERMINAL_GATEWAY_SECRET (32+ characters, the same value as in Laravel) and restart this container.',
+  );
+  setInterval(() => {}, 1 << 30);
+  return;
 }
 
 async function internal(path, body) {
