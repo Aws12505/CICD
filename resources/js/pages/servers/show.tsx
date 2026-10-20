@@ -83,6 +83,21 @@ function CopyLine({ text }: { text: string }) {
     );
 }
 
+/** "ssh-rsa SHA256:…" → "rsa", so the hint names the matching key file. */
+const keyFileType = (fingerprint: string | null) => {
+    const type = fingerprint?.split(' ')[0] ?? '';
+
+    if (type.includes('ed25519')) {
+        return 'ed25519';
+    }
+
+    if (type.includes('ecdsa')) {
+        return 'ecdsa';
+    }
+
+    return 'rsa';
+};
+
 export default function ServerShow({
     server,
     actions,
@@ -359,11 +374,15 @@ export default function ServerShow({
                                     'Not recorded yet.'}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                                Compare this with what the server reports
-                                (`ssh-keygen -lf
-                                /etc/ssh/ssh_host_ed25519_key.pub`). A rebuilt
-                                server fails to connect until the key is read
-                                again.
+                                On the server, this should match{' '}
+                                <code className="font-mono">
+                                    ssh-keygen -lf /etc/ssh/ssh_host_
+                                    {keyFileType(server.host_key_fingerprint)}
+                                    _key.pub
+                                </code>
+                                . If it does not, the address points at a
+                                different machine. A rebuilt server fails to
+                                connect until the key is read again.
                             </p>
                         </div>
                         {server.public_key && (

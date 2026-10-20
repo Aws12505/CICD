@@ -287,8 +287,10 @@ const HOW_TOS: HowTo[] = [
                 <Link href="/servers/create" className="underline">
                     Servers → Add server
                 </Link>
-                : a name, the IP as the hostname (or a DNS name that already
-                resolves), user <Code>root</Code>, port 22.
+                : a name, the server's <b>IP address</b> in "Address to connect
+                to" (not a domain: SSH needs no DNS, and a domain that points
+                somewhere else would reach the wrong machine), user{' '}
+                <Code>root</Code>, port 22.
             </>,
             <>
                 On the server page, copy the line under step 1. Open the

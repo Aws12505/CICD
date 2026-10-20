@@ -57,20 +57,30 @@ export default function ServerCreate() {
 
                         <div className="grid gap-4 sm:grid-cols-2">
                             <div className="grid gap-2">
-                                <Label htmlFor="hostname">Hostname</Label>
+                                <Label htmlFor="hostname">
+                                    Address to connect to
+                                </Label>
                                 <Input
                                     id="hostname"
+                                    className="font-mono"
                                     value={data.hostname}
                                     onChange={(e) =>
                                         setData('hostname', e.target.value)
                                     }
-                                    placeholder="acme.example.com"
+                                    placeholder="203.0.113.10"
                                 />
                                 <InputError message={errors.hostname} />
+                                <p className="text-xs text-muted-foreground">
+                                    What the control plane connects to. Use the
+                                    server's IP: SSH does not need any domain to
+                                    point anywhere, and a domain that points at
+                                    a different machine makes the key "never
+                                    accepted".
+                                </p>
                             </div>
                             <div className="grid gap-2">
                                 <Label htmlFor="ip_address">
-                                    IP address (optional)
+                                    IP address for reference (optional)
                                 </Label>
                                 <Input
                                     id="ip_address"
