@@ -26,6 +26,12 @@ touch /var/www/html/storage/logs/laravel.log
   fi
 ) 9>/var/www/html/storage/.boot-deps.lock
 
+# Same fill-in as the backend (same lock): Reverb starts from this container
+# a moment later and needs its credentials already in .env.
+if [ -f /var/www/html/vendor/autoload.php ]; then
+  (flock -x 9; php artisan control-plane:ensure-env) 9>/var/www/html/storage/.boot-env.lock || true
+fi
+
 php artisan config:clear || true
 
 # The worker runs pipeline shell commands that need to write to /root/core/apps

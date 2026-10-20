@@ -3,6 +3,7 @@ import {
     Activity,
     BookOpen,
     Boxes,
+    HeartPulse,
     Building2,
     History,
     Layers,
@@ -80,6 +81,15 @@ export function AppSidebar() {
             label: 'Watch',
             items: [
                 { title: 'Operations', href: '/operations', icon: Activity },
+                ...(isAdmin
+                    ? [
+                          {
+                              title: 'System health',
+                              href: '/control-plane/system',
+                              icon: HeartPulse,
+                          },
+                      ]
+                    : []),
                 { title: 'Activity', href: '/tasks', icon: History },
             ],
         },

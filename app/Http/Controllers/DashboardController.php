@@ -6,12 +6,13 @@ use App\Models\PipelineRun;
 use App\Models\Project;
 use App\Services\Guide\SetupGuide;
 use App\Services\Monitoring\Fleet;
+use App\Services\System\SystemCheck;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class DashboardController extends Controller
 {
-    public function __invoke(Fleet $fleet, SetupGuide $guide): Response
+    public function __invoke(Fleet $fleet, SetupGuide $guide, SystemCheck $system): Response
     {
         $recentRuns = PipelineRun::query()
             ->with('pipeline.project')
@@ -67,6 +68,10 @@ class DashboardController extends Controller
                 'setup' => $guide->setup(),
                 'clients' => $guide->clients(),
             ],
+            // The fixes are commands for the host, so only admins see them.
+            'systemProblems' => request()->user()?->hasRole('admin')
+                ? SystemCheck::problems($system->quick())
+                : [],
             // Servers hold the keys to client machines; only admins see them.
             'fleet' => request()->user()?->hasRole('admin') ? $fleet->servers() : null,
         ]);

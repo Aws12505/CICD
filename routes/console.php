@@ -1,7 +1,9 @@
 <?php
 
+use App\Services\System\SystemCheck;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('inspire', function () {
@@ -88,3 +90,16 @@ Schedule::command('releases:run-due')
 Schedule::command('servers:collect-metrics')
     ->everyMinute()
     ->withoutOverlapping();
+
+/*
+|--------------------------------------------------------------------------
+| Heartbeat
+|--------------------------------------------------------------------------
+|
+| Read by the System health page: if this stops, the scheduler has.
+|
+*/
+
+Schedule::call(fn () => Cache::put(SystemCheck::SCHEDULER_KEY, time(), 900))
+    ->everyMinute()
+    ->name('scheduler-heartbeat');

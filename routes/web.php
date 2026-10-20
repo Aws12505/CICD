@@ -16,6 +16,7 @@ use App\Http\Controllers\ServerOpsController;
 use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\StackBackupController;
 use App\Http\Controllers\StackPlanController;
+use App\Http\Controllers\SystemController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TerminalController;
 use App\Http\Controllers\VersionsController;
@@ -184,6 +185,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('servers/{server}/rescan', [ServerController::class, 'rescan'])->name('servers.rescan');
         Route::post('servers/{server}/regenerate-key', [ServerController::class, 'regenerateKey'])->name('servers.regenerate-key');
         Route::post('servers/{server}/provision', [ServerController::class, 'provision'])->name('servers.provision');
+        Route::get('control-plane/system', [SystemController::class, 'show'])->name('control-plane.system');
         Route::get('servers/{server}/metrics/live', [ServerOpsController::class, 'live'])->name('servers.metrics.live');
         Route::get('servers/{server}/metrics', [ServerOpsController::class, 'history'])->name('servers.metrics');
         Route::get('servers/{server}/containers/{container}/logs', [ServerOpsController::class, 'logs'])->name('servers.containers.logs');

@@ -32,10 +32,22 @@ touch /var/www/html/storage/logs/laravel.log
   fi
 ) 9>/var/www/html/storage/.boot-deps.lock
 
+# Reverb credentials. `reverb:install` is easy to skip and then nothing fills
+# these in, so the browser connects to /app/ with no key and every live log is
+# dead. Fill any that are empty (never one that is set). The key is baked into
+# the frontend at build time, so a fresh one forces a rebuild below.
+FRONTEND_MANIFEST=/var/www/html/public/build/manifest.json
+if [ -f /var/www/html/vendor/autoload.php ]; then
+  ENV_OUT="$( (flock -x 9; php artisan control-plane:ensure-env) 9>/var/www/html/storage/.boot-env.lock 2>&1 || true)"
+  echo "$ENV_OUT"
+  case "$ENV_OUT" in
+    *"reverb-credentials: generated"*) rm -f "$FRONTEND_MANIFEST" ;;
+  esac
+fi
+
 # Build the React/Inertia frontend, but only when it is actually stale.
 # This used to run on every boot, adding minutes to each restart and turning a
 # transient npm registry failure into a failed deploy.
-FRONTEND_MANIFEST=/var/www/html/public/build/manifest.json
 if [ ! -f "$FRONTEND_MANIFEST" ] \
    || [ /var/www/html/package-lock.json -nt "$FRONTEND_MANIFEST" ] \
    || [ /var/www/html/package.json -nt "$FRONTEND_MANIFEST" ]; then

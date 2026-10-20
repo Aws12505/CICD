@@ -28,3 +28,4 @@ yarn-error.log
 /.vscode
 /.zed
 /storage/.boot-deps.lock
+/storage/.boot-env.lock

@@ -137,6 +137,81 @@ const HOW_TOS: HowTo[] = [
         note: 'The worker container runs the scheduler: metrics every minute, backups nightly, drift every five minutes. If it is down, the dashboard shows "No metrics".',
     },
     {
+        id: 'live-logs',
+        title: 'Live logs and the queue worker (when something stays "queued")',
+        summary:
+            'Reverb streams every log; the queue worker runs every setup, build and release. Both live in the worker container.',
+        steps: [
+            <>
+                Open{' '}
+                <Link href="/control-plane/system" className="underline">
+                    System health
+                </Link>
+                . It says which of the queue, the scheduler and Reverb is not
+                working and shows the command for it. "Test live logs end to
+                end" publishes a real event.
+            </>,
+            <>
+                <b>Reverb credentials.</b> The boot script generates{' '}
+                <Code>REVERB_APP_ID</Code>, <Code>REVERB_APP_KEY</Code> and{' '}
+                <Code>REVERB_APP_SECRET</Code> in <Code>.env</Code> when they
+                are empty, rebuilds the frontend (the key is baked into it) and
+                starts Reverb. After pulling an update:{' '}
+                <Code>docker compose up -d --build</Code>.
+            </>,
+            <>
+                <b>Same name everywhere.</b> <Code>APP_URL</Code> and{' '}
+                <Code>REVERB_HOST</Code> must be the address you open the
+                control plane at (<Code>REVERB_PORT=443</Code>,{' '}
+                <Code>REVERB_SCHEME=https</Code>). If you change them, rebuild:{' '}
+                <Code>docker exec CICD sh -c &apos;npm run build&apos;</Code>{' '}
+                then <Code>docker compose restart</Code>.
+            </>,
+            <>
+                <b>nginx must route two paths to Reverb</b>, not one:{' '}
+                <Code>/app</Code> (the browser's websocket) and{' '}
+                <Code>/apps</Code> (the server publishing events). Both proxy to{' '}
+                <Code>127.0.0.1:42070</Code>. The full file is{' '}
+                <Code>nginx/control-plane.conf.example</Code>; after editing,{' '}
+                <Code>
+                    sudo nginx -t &amp;&amp; sudo systemctl reload nginx
+                </Code>
+                .
+            </>,
+            <>
+                <b>Check from the command line.</b> A working websocket answers{' '}
+                <Code>101 Switching Protocols</Code>:{' '}
+                <Code>
+                    curl -i -N -H &quot;Connection: Upgrade&quot; -H
+                    &quot;Upgrade: websocket&quot; -H
+                    &quot;Sec-WebSocket-Version: 13&quot; -H
+                    &quot;Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==&quot;
+                    &quot;https://YOUR-DOMAIN/app/YOUR_REVERB_APP_KEY?protocol=7&quot;
+                </Code>
+                .
+            </>,
+            <>
+                <b>Stays "queued".</b> Nothing is taking jobs.{' '}
+                <Code>docker exec CICD_Worker supervisorctl status</Code> must
+                show <Code>laravel-worker_00</Code> and{' '}
+                <Code>laravel-worker_01</Code> RUNNING. If one says FATAL or
+                keeps restarting,{' '}
+                <Code>
+                    docker exec CICD_Worker tail -n 60
+                    /var/log/supervisor/worker.log
+                </Code>{' '}
+                shows why. Then <Code>docker restart CICD_Worker</Code>.
+            </>,
+            <>
+                <b>Jobs that failed</b> (the worker ran them and they crashed):{' '}
+                <Code>docker exec CICD php artisan queue:failed</Code>, then{' '}
+                <Code>docker exec CICD php artisan queue:retry all</Code> once
+                fixed.
+            </>,
+        ],
+        note: "A task that was already queued when you fix the worker starts by itself within a few seconds. Live log lines that were missed are still in the task's saved log: reload the page.",
+    },
+    {
         id: 'github-token',
         title: 'Get the GitHub token',
         summary:
@@ -549,6 +624,10 @@ function HowToSection({ howTo }: { howTo: HowTo }) {
     return (
         <details
             id={howTo.id}
+            open={
+                typeof window !== 'undefined' &&
+                window.location.hash === `#${howTo.id}`
+            }
             className="group rounded-xl border border-border bg-card shadow-card"
         >
             <summary className="flex min-h-14 items-center justify-between gap-3 px-5 py-3">

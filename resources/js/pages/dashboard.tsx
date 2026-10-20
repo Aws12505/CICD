@@ -43,9 +43,11 @@ interface Props {
         clients: GuideClient[];
     };
     fleet: FleetServer[] | null;
+    systemProblems: { key: string; title: string; detail: string }[];
 }
 
 export default function Dashboard({
+    systemProblems,
     guide,
     fleet,
     projects,
@@ -58,6 +60,34 @@ export default function Dashboard({
         <>
             <Head title="Dashboard" />
             <div className="flex h-full flex-1 flex-col gap-6 p-4">
+                {systemProblems.length > 0 && (
+                    <Card className="border-destructive/40 bg-destructive/5">
+                        <CardContent className="flex flex-wrap items-start justify-between gap-3 p-4">
+                            <div className="min-w-0">
+                                <p className="font-medium">
+                                    The control plane itself needs attention
+                                </p>
+                                <ul className="mt-1 grid gap-0.5 text-sm text-muted-foreground">
+                                    {systemProblems.map((p) => (
+                                        <li key={p.key}>
+                                            <span className="font-medium text-foreground">
+                                                {p.title}:
+                                            </span>{' '}
+                                            {p.detail}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                            <Button asChild size="sm">
+                                <Link href="/control-plane/system">
+                                    See how to fix it{' '}
+                                    <ArrowRight className="size-4" />
+                                </Link>
+                            </Button>
+                        </CardContent>
+                    </Card>
+                )}
+
                 {/* The one thing to do next. */}
                 <Card className="surface-raised border-primary/30 bg-gradient-to-br from-primary/10 via-card to-card">
                     <CardContent className="flex flex-col gap-4 p-6 lg:flex-row lg:items-center lg:justify-between">

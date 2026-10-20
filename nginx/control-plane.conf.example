@@ -1,0 +1,113 @@
+# Host nginx for the control plane itself. Replace cicd.example.com with the
+# address you open it at (the same value as APP_URL and REVERB_HOST in .env).
+#
+# First time, before the certificate exists, serve only the port-80 block,
+# issue the certificate with `certbot certonly --webroot -w /var/www/acme -d <domain>`
+# and then add the 443 block (see the Guide: "Install the control plane").
+
+# Once, at http{} level (for example /etc/nginx/conf.d/00-websocket.conf).
+# Skip if another site on the machine already defines $connection_upgrade.
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+upstream cicd_app      { server 127.0.0.1:42069; keepalive 16; }
+upstream cicd_reverb   { server 127.0.0.1:42070; }
+upstream cicd_terminal { server 127.0.0.1:42071; }
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name cicd.example.com;
+
+    location ^~ /.well-known/acme-challenge/ { root /var/www/acme; }
+    location / { return 301 https://$host$request_uri; }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;   # nginx 1.25.1+; on older versions write "listen 443 ssl http2;" instead
+    server_name cicd.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/cicd.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/cicd.example.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+
+    client_max_body_size 100m;
+
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    # Browser terminal (terminal-gateway container).
+    location /terminal/ws {
+        proxy_pass http://cicd_terminal;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host       $host;
+        proxy_set_header X-Real-IP  $remote_addr;
+        proxy_read_timeout 4h;
+        proxy_send_timeout 4h;
+        proxy_buffering off;
+    }
+
+    # Reverb, the browser's websocket: /app/<key>
+    location /app {
+        proxy_pass http://cicd_reverb;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host       $host;
+        proxy_set_header X-Real-IP  $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 1d;
+        proxy_buffering off;
+    }
+
+    # Reverb, the HTTP API the server publishes events to: /apps/<id>/events.
+    # Without this, every broadcast fails and live logs stay empty even though
+    # the browser connects. (/app and /apps are different paths.)
+    location /apps/ {
+        proxy_pass http://cicd_reverb;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+
+    # The Laravel app.
+    location / {
+        proxy_pass http://cicd_app;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 60s;
+        proxy_read_timeout    300s;
+    }
+
+    # GitHub webhooks; the signature is what protects them.
+    location ^~ /webhook/ {
+        proxy_pass http://cicd_app;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host              $host;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # The terminal gateway reaches Laravel container to container; nobody
+    # outside should reach these.
+    location ^~ /internal/ { return 404; }
+}
