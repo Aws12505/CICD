@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Service;
 use App\Models\Setting;
+use App\Services\GitHub\GitHub;
 use App\Services\Guide\SetupGuide;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -76,6 +79,34 @@ class ControlPlaneSettingsController extends Controller
             // application/json, the webhook secret above).
             'webhook_url' => route('webhook.build'),
         ]);
+    }
+
+    /**
+     * Can the saved token read every service repository? One line per
+     * service, with the reason when not, so "the first build failed" becomes
+     * "pizzasys: the Resource owner must be the organisation".
+     */
+    public function testGithub(GitHub $github): JsonResponse
+    {
+        if (! $github->configured()) {
+            return response()->json(['configured' => false, 'results' => []]);
+        }
+
+        $results = Service::query()->orderBy('position')->orderBy('name')->get()->map(function (Service $service) use ($github) {
+            try {
+                $check = $github->checkRead($service->repo_full_name, $service->default_branch);
+            } catch (\Throwable $e) {
+                $check = ['ok' => false, 'problem' => 'error', 'message' => 'Could not reach GitHub: '.$e->getMessage()];
+            }
+
+            return [
+                'service' => $service->name,
+                'repository' => $service->repo_full_name,
+                'branch' => $service->default_branch,
+            ] + $check;
+        })->values();
+
+        return response()->json(['configured' => true, 'results' => $results]);
     }
 
     public function update(Request $request): RedirectResponse

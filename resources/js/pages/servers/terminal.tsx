@@ -6,20 +6,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { XtermView } from '@/components/xterm-view';
+import { csrf } from '@/lib/csrf';
 
 type Props = {
     server: { id: number; name: string; hostname: string };
     container: string | null;
     enabled: boolean;
 };
-
-const csrf = () =>
-    decodeURIComponent(
-        document.cookie
-            .split('; ')
-            .find((c) => c.startsWith('XSRF-TOKEN='))
-            ?.split('=')[1] ?? '',
-    );
 
 export default function ServerTerminal({ server, container, enabled }: Props) {
     const socket = useRef<WebSocket | null>(null);

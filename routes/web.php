@@ -202,6 +202,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // reach every client.
         Route::get('control-plane/settings', [ControlPlaneSettingsController::class, 'edit'])->name('control-plane-settings.edit');
         Route::put('control-plane/settings', [ControlPlaneSettingsController::class, 'update'])->name('control-plane-settings.update');
+        Route::post('control-plane/settings/test-github', [ControlPlaneSettingsController::class, 'testGithub'])->middleware('throttle:10,1')->name('control-plane-settings.test-github');
     });
 
     /*

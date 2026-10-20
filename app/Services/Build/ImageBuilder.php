@@ -332,12 +332,33 @@ class ImageBuilder
         $result = $this->runner->run(new LocalTarget, $script, env: $env, timeout: 3600, onOutput: $task->logger());
 
         if ($result->failed()) {
-            $this->fail($build, $task, "{$name}: ".$result->failureReason());
+            $reason = "{$name}: ".$result->failureReason();
+
+            if ($name === 'fetch' && $this->looksLikeRefusedAccess($result->stdout.$result->stderr)) {
+                $explanation = $this->refusedAccessMessage($build->service);
+                $task->log("\n".$explanation."\n");
+                $reason = $explanation."\n\n".$reason;
+            }
+
+            $this->fail($build, $task, $reason);
 
             return false;
         }
 
         return true;
+    }
+
+    /** What git prints when GitHub will not give it the repository. */
+    private function looksLikeRefusedAccess(string $output): bool
+    {
+        return (bool) preg_match('/could not read Username|Authentication failed|Repository not found|terminal prompts disabled|returned error: (401|403|404)/i', $output);
+    }
+
+    private function refusedAccessMessage(Service $service): string
+    {
+        return Setting::has(Setting::GITHUB_TOKEN)
+            ? "GitHub would not let the saved token read {$service->repo_full_name}. Open Settings and click \"Test GitHub access\": it checks every service repository and says what to change on GitHub (usually: the token's Resource owner must be the organisation, and its Repository access must include this repository with Contents → Read-only)."
+            : "No GitHub token is saved, and {$service->repo_full_name} is private. Add one in Settings (the Guide shows how), then build again.";
     }
 
     private function fail(Build $build, Task $task, string $reason): Build
@@ -466,8 +487,9 @@ class ImageBuilder
     {
         $token = Setting::get(Setting::GITHUB_TOKEN);
 
+        // Never wait on a prompt nobody can answer, token or not.
         if (blank($token)) {
-            return [];
+            return ['GIT_TERMINAL_PROMPT' => '0'];
         }
 
         return [

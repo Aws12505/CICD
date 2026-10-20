@@ -1,6 +1,7 @@
 import { Head, Link, useForm } from '@inertiajs/react';
 import type { FormEventHandler } from 'react';
 import InputError from '@/components/input-error';
+import { GithubAccessTest } from '@/components/github-access-test';
 import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -145,6 +146,8 @@ export default function ControlPlaneSettings({
                         ))}
                     </CardContent>
                 </Card>
+
+                <GithubAccessTest />
 
                 <Card>
                     <CardHeader>

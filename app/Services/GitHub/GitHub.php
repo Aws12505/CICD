@@ -60,6 +60,56 @@ class GitHub
         ]);
     }
 
+    /**
+     * Whether the token can read a repository's code, and if not, why, in the
+     * words of what to change on GitHub.
+     *
+     * Two calls, because they fail differently: the repository itself (does
+     * the token see it at all?) and its build branch (needs Contents: read,
+     * and proves the branch exists). A 404 from GitHub means "not found OR no
+     * access", so the message names both.
+     *
+     * @return array{ok: bool, problem: ?string, message: string}
+     */
+    public function checkRead(string $repository, string $branch): array
+    {
+        $repo = $this->client()->get("repos/{$repository}");
+
+        if ($repo->status() === 401) {
+            return $this->verdict(false, 'bad-token', 'GitHub rejected the token: it is wrong, expired or revoked. Make a new one and paste it in Settings.');
+        }
+
+        if ($repo->status() === 403) {
+            return $this->verdict(false, 'forbidden', $repo->header('X-GitHub-SSO')
+                ? 'The organisation uses SAML single sign-on. On GitHub: Settings → Developer settings → your token → Configure SSO → Authorize for the organisation.'
+                : 'GitHub refused access (403)'.($repo->json('message') ? ': '.$repo->json('message') : '').'. If the organisation restricts tokens, an owner has to approve it.');
+        }
+
+        if ($repo->status() === 404) {
+            return $this->verdict(false, 'no-access', "The token cannot see {$repository}. Either the repository name is wrong, or the token was not granted it: for a fine-grained token the Resource owner must be the organisation (not your own account) and Repository access must include this repository. If the organisation requires approval, an owner approves it under Organisation settings → Personal access tokens.");
+        }
+
+        if (! $repo->successful()) {
+            return $this->verdict(false, 'error', "GitHub answered {$repo->status()} for {$repository}.");
+        }
+
+        $branchResponse = $this->client()->get("repos/{$repository}/branches/".rawurlencode($branch));
+
+        if ($branchResponse->status() === 404) {
+            return $this->verdict(false, 'branch', "The token can see {$repository}, but not the branch {$branch}: either that branch does not exist (check the service's build branch) or the token lacks Contents → Read-only.");
+        }
+
+        return $branchResponse->successful()
+            ? $this->verdict(true, null, "Can read {$repository}@{$branch}.")
+            : $this->verdict(false, 'error', "GitHub answered {$branchResponse->status()} for branch {$branch}.");
+    }
+
+    /** @return array{ok: bool, problem: ?string, message: string} */
+    private function verdict(bool $ok, ?string $problem, string $message): array
+    {
+        return ['ok' => $ok, 'problem' => $problem, 'message' => $message];
+    }
+
     private function client(): PendingRequest
     {
         return Http::baseUrl('https://api.github.com/')

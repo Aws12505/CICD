@@ -228,8 +228,9 @@ const HOW_TOS: HowTo[] = [
                 (RnD-Experts-Team), not your own account.
             </>,
             <>
-                <b>Repository access</b>: "Only select repositories" and tick
-                the eleven service repositories.
+                <b>Repository access</b>: "Only select repositories" and tick{' '}
+                <b>every</b> service repository (the eleven in the catalog,
+                including pizzasys and AuditApp).
             </>,
             <>
                 <b>Repository permissions</b>: Contents → Read-only; Metadata is
@@ -241,7 +242,13 @@ const HOW_TOS: HowTo[] = [
                 <Link href="/control-plane/settings" className="underline">
                     Settings → GitHub token
                 </Link>
-                .
+                , Save.
+            </>,
+            <>
+                <b>Test it</b>: on the same Settings page click{' '}
+                <b>Test GitHub access</b>. Every repository must say "readable".
+                A red line says what to change on GitHub for that repository, so
+                the first build does not fail on the clone.
             </>,
         ],
         note: 'If the organisation requires approval of fine-grained tokens, an organisation owner approves it under Organisation settings → Personal access tokens → Pending requests.',
