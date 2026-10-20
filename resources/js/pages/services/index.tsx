@@ -1,10 +1,10 @@
-import { Head, Link } from '@inertiajs/react';
-import { Layers, Plus } from 'lucide-react';
-import { useAbilities } from '@/hooks/use-abilities';
+import { Head, Link, router } from '@inertiajs/react';
+import { Layers, Plus, Sparkles } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { PlaceholderPattern } from '@/components/ui/placeholder-pattern';
+import { useAbilities } from '@/hooks/use-abilities';
 import type { ServiceRow } from '@/types/topology';
 
 export default function ServicesIndex({
@@ -29,9 +29,12 @@ export default function ServicesIndex({
                                 Services
                             </h1>
                             <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                                Defined here rather than by a manifest in each
-                                repo, so adding the thirteenth service is a form
-                                rather than a commit.
+                                One entry per service: its repository, the
+                                settings it needs, its worker processes and the
+                                commands a deploy runs. Clients pick from this
+                                list. "Add the standard services" fills it from
+                                the repositories; run it again any time to pick
+                                up new keys without losing your edits.
                             </p>
                             <div className="mt-3">
                                 <Badge variant="secondary">
@@ -40,11 +43,29 @@ export default function ServicesIndex({
                             </div>
                         </div>
                         {canManage && (
-                            <Button asChild>
-                                <Link href="/services/create">
-                                    <Plus className="size-4" /> Add service
-                                </Link>
-                            </Button>
+                            <div className="flex flex-wrap gap-2">
+                                <Button
+                                    variant={
+                                        services.length === 0
+                                            ? 'default'
+                                            : 'outline'
+                                    }
+                                    onClick={() =>
+                                        router.post('/services/seed')
+                                    }
+                                >
+                                    <Sparkles className="size-4" />{' '}
+                                    {services.length === 0
+                                        ? 'Add the standard services'
+                                        : 'Refresh the standard services'}
+                                </Button>
+                                <Button asChild variant="outline">
+                                    <Link href="/services/create">
+                                        <Plus className="size-4" /> Add a
+                                        service
+                                    </Link>
+                                </Button>
+                            </div>
                         )}
                     </CardContent>
                 </Card>

@@ -9,28 +9,40 @@ import {
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import type { NavItem } from '@/types';
 
-export function NavMain({ items = [] }: { items: NavItem[] }) {
+export type NavGroup = {
+    label: string;
+    items: NavItem[];
+};
+
+/** The sidebar, in the order the work happens: set up, clients, ship, watch. */
+export function NavMain({ groups = [] }: { groups: NavGroup[] }) {
     const { isCurrentUrl } = useCurrentUrl();
 
     return (
-        <SidebarGroup className="px-2 py-0">
-            <SidebarGroupLabel>Platform</SidebarGroupLabel>
-            <SidebarMenu>
-                {items.map((item) => (
-                    <SidebarMenuItem key={item.title}>
-                        <SidebarMenuButton
-                            asChild
-                            isActive={isCurrentUrl(item.href)}
-                            tooltip={{ children: item.title }}
-                        >
-                            <Link href={item.href} prefetch>
-                                {item.icon && <item.icon />}
-                                <span>{item.title}</span>
-                            </Link>
-                        </SidebarMenuButton>
-                    </SidebarMenuItem>
+        <>
+            {groups
+                .filter((group) => group.items.length > 0)
+                .map((group) => (
+                    <SidebarGroup key={group.label} className="px-2 py-0">
+                        <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+                        <SidebarMenu>
+                            {group.items.map((item) => (
+                                <SidebarMenuItem key={item.title}>
+                                    <SidebarMenuButton
+                                        asChild
+                                        isActive={isCurrentUrl(item.href)}
+                                        tooltip={{ children: item.title }}
+                                    >
+                                        <Link href={item.href} prefetch>
+                                            {item.icon && <item.icon />}
+                                            <span>{item.title}</span>
+                                        </Link>
+                                    </SidebarMenuButton>
+                                </SidebarMenuItem>
+                            ))}
+                        </SidebarMenu>
+                    </SidebarGroup>
                 ))}
-            </SidebarMenu>
-        </SidebarGroup>
+        </>
     );
 }

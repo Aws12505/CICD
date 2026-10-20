@@ -85,18 +85,27 @@ class Service extends Model
      * without them keeps the single supervisord worker its image starts
      * with the "worker" argument.
      *
-     * @return list<array{name: string, command: string|null}>
+     * A process may also listen: `port` is the container port and `path` the
+     * URL prefix nginx routes to it on the service's domain (Reverb: 8080
+     * and /app).
+     *
+     * @return list<array{name: string, command: string|null, port: int|null, path: string|null}>
      */
     public function processList(): array
     {
         $processes = collect($this->processes ?? [])
             ->filter(fn ($p) => filled($p['name'] ?? null) && filled($p['command'] ?? null))
-            ->map(fn ($p) => ['name' => (string) $p['name'], 'command' => (string) $p['command']])
+            ->map(fn ($p) => [
+                'name' => (string) $p['name'],
+                'command' => (string) $p['command'],
+                'port' => filled($p['port'] ?? null) ? (int) $p['port'] : null,
+                'path' => filled($p['path'] ?? null) ? '/'.ltrim((string) $p['path'], '/') : null,
+            ])
             ->values()
             ->all();
 
         if ($processes === [] && $this->runsAWorker()) {
-            return [['name' => 'worker', 'command' => null]];
+            return [['name' => 'worker', 'command' => null, 'port' => null, 'path' => null]];
         }
 
         return $processes;

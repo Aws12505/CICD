@@ -1,6 +1,7 @@
 import { Link } from '@inertiajs/react';
 import {
     Activity,
+    BookOpen,
     Boxes,
     Building2,
     History,
@@ -10,12 +11,13 @@ import {
     Package,
     Rocket,
     Server,
-    Table2,
     Settings2,
+    Table2,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
+import type { NavGroup } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
 import {
     Sidebar,
@@ -28,84 +30,67 @@ import {
 } from '@/components/ui/sidebar';
 import { useAbilities } from '@/hooks/use-abilities';
 import { dashboard } from '@/routes';
-import type { NavItem } from '@/types';
-
-const mainNavItems: NavItem[] = [
-    {
-        title: 'Dashboard',
-        href: dashboard(),
-        icon: LayoutGrid,
-    },
-    {
-        title: 'Projects',
-        href: '/projects',
-        icon: Boxes,
-    },
-    {
-        title: 'Runs',
-        href: '/runs',
-        icon: ListChecks,
-    },
-    {
-        title: 'Clients',
-        href: '/clients',
-        icon: Building2,
-    },
-    {
-        title: 'Services',
-        href: '/services',
-        icon: Layers,
-    },
-    {
-        title: 'Versions',
-        href: '/versions',
-        icon: Table2,
-    },
-    {
-        title: 'Builds',
-        href: '/builds',
-        icon: Package,
-    },
-    {
-        title: 'Releases',
-        href: '/releases',
-        icon: Rocket,
-    },
-    {
-        title: 'Operations',
-        href: '/operations',
-        icon: Activity,
-    },
-    {
-        title: 'Activity',
-        href: '/tasks',
-        icon: History,
-    },
-];
-
-// Servers hold keys that grant root on client machines, so even the nav
-// entry is admin-only — see routes/web.php, which is what enforces it.
-const adminNavItems: NavItem[] = [
-    {
-        title: 'Servers',
-        href: '/servers',
-        icon: Server,
-    },
-    {
-        title: 'Settings',
-        href: '/control-plane/settings',
-        icon: Settings2,
-    },
-];
-
-const footerNavItems: NavItem[] = [];
 
 export function AppSidebar() {
+    // Servers and Settings hold keys to client machines, so even the nav
+    // entries are admin-only; routes/web.php is what enforces it.
     const { destroy: isAdmin } = useAbilities();
 
-    const navItems = isAdmin
-        ? [...mainNavItems, ...adminNavItems]
-        : mainNavItems;
+    const groups: NavGroup[] = [
+        {
+            label: 'Start here',
+            items: [
+                { title: 'Dashboard', href: dashboard(), icon: LayoutGrid },
+                { title: 'Guide', href: '/guide', icon: BookOpen },
+            ],
+        },
+        {
+            label: 'Set up once',
+            items: [
+                ...(isAdmin
+                    ? [
+                          {
+                              title: 'Settings',
+                              href: '/control-plane/settings',
+                              icon: Settings2,
+                          },
+                      ]
+                    : []),
+                { title: 'Services', href: '/services', icon: Layers },
+                ...(isAdmin
+                    ? [{ title: 'Servers', href: '/servers', icon: Server }]
+                    : []),
+            ],
+        },
+        {
+            label: 'Clients',
+            items: [
+                { title: 'Clients', href: '/clients', icon: Building2 },
+                { title: 'Versions', href: '/versions', icon: Table2 },
+            ],
+        },
+        {
+            label: 'Ship',
+            items: [
+                { title: 'Builds', href: '/builds', icon: Package },
+                { title: 'Releases', href: '/releases', icon: Rocket },
+            ],
+        },
+        {
+            label: 'Watch',
+            items: [
+                { title: 'Operations', href: '/operations', icon: Activity },
+                { title: 'Activity', href: '/tasks', icon: History },
+            ],
+        },
+        {
+            label: 'Old pipelines',
+            items: [
+                { title: 'Projects', href: '/projects', icon: Boxes },
+                { title: 'Runs', href: '/runs', icon: ListChecks },
+            ],
+        },
+    ];
 
     return (
         <Sidebar collapsible="icon" variant="inset">
@@ -122,11 +107,11 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain items={navItems} />
+                <NavMain groups={groups} />
             </SidebarContent>
 
             <SidebarFooter>
-                <NavFooter items={footerNavItems} className="mt-auto" />
+                <NavFooter items={[]} className="mt-auto" />
                 <NavUser />
             </SidebarFooter>
         </Sidebar>

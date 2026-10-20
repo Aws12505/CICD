@@ -54,21 +54,42 @@ class PortAllocator
             return $entitlement->host_port;
         }
 
+        $port = $this->free($entitlement);
+        $entitlement->forceFill(['host_port' => $port])->save();
+
+        return $port;
+    }
+
+    /** A host port for a listening process (Reverb) of a service. */
+    public function assignProcess(StackService $entitlement, string $process): int
+    {
+        $ports = $entitlement->process_ports ?? [];
+
+        if (isset($ports[$process])) {
+            return (int) $ports[$process];
+        }
+
+        $ports[$process] = $this->free($entitlement);
+        $entitlement->forceFill(['process_ports' => $ports])->save();
+
+        return $ports[$process];
+    }
+
+    private function free(StackService $entitlement): int
+    {
         $stack = $entitlement->stack;
         $size = (int) config('deploy.ports.block_size');
 
-        $used = StackService::query()
-            ->where('stack_id', $stack->id)
-            ->whereNotNull('host_port')
-            ->pluck('host_port')
-            ->all();
+        $rows = StackService::query()->where('stack_id', $stack->id)->get(['host_port', 'process_ports']);
+        $used = [
+            ...$rows->pluck('host_port')->filter()->map(fn ($p) => (int) $p)->all(),
+            ...$rows->flatMap(fn ($r) => array_values($r->process_ports ?? []))->map(fn ($p) => (int) $p)->all(),
+        ];
 
         for ($offset = 0; $offset < $size; $offset++) {
             $candidate = $stack->port_range_start + $offset;
 
             if (! in_array($candidate, $used, true)) {
-                $entitlement->forceFill(['host_port' => $candidate])->save();
-
                 return $candidate;
             }
         }

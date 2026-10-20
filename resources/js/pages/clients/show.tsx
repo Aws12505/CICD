@@ -1,11 +1,13 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { AlertTriangle, Eye, SlidersHorizontal } from 'lucide-react';
 import { useState } from 'react';
+import { SetupSteps } from '@/components/setup-steps';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { useAbilities } from '@/hooks/use-abilities';
+import type { GuideStep } from '@/types/guide';
 import type {
     ClientRow,
     Entitlement,
@@ -20,6 +22,7 @@ type Props = {
     };
     services: Pick<ServiceRow, 'id' | 'name' | 'slug' | 'subdomain'>[];
     stacks: StackDetail[];
+    steps: GuideStep[];
 };
 
 function EntitlementRow({
@@ -124,7 +127,7 @@ function FirstAdmin({ slug, email }: { slug: string; email: string }) {
     );
 }
 
-export default function ClientShow({ client, services, stacks }: Props) {
+export default function ClientShow({ client, services, stacks, steps }: Props) {
     const { manage: canManage, destroy: isAdmin } = useAbilities();
 
     return (
@@ -157,9 +160,19 @@ export default function ClientShow({ client, services, stacks }: Props) {
                     )}
                 </div>
 
+                <Card>
+                    <CardHeader className="border-b border-sidebar-border/70">
+                        <CardTitle>Where {client.name} stands</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        <SetupSteps steps={steps} canAct={canManage} />
+                    </CardContent>
+                </Card>
+
                 <p className="text-sm text-muted-foreground">
-                    Turning a service on records intent. Containers, databases
-                    and certificates appear on the next release, not on save.
+                    Services: tick what this client gets, testing first. Ticking
+                    only records it; containers, databases and certificates
+                    appear on the next deploy.
                 </p>
 
                 {stacks.map((stack) => (

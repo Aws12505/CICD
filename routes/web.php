@@ -20,6 +20,7 @@ use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TerminalController;
 use App\Http\Controllers\VersionsController;
 use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
 
 // Route::redirect rather than a closure: closures cannot be route-cached, and
 // the entrypoint now runs `route:cache` on boot.
@@ -80,6 +81,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     | Readable by anyone signed in; changing who runs what is operator work,
     | and removing a client or service is admin work.
     */
+    // Plain-words explanation of every area and the three workflows.
+    Route::get('guide', fn () => Inertia::render('guide'))->name('guide');
+
     Route::get('clients', [ClientController::class, 'index'])->name('clients.index');
     Route::get('services', [ServiceController::class, 'index'])->name('services.index');
 
@@ -87,6 +91,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('clients/create', [ClientController::class, 'create'])->name('clients.create');
         Route::post('clients', [ClientController::class, 'store'])->name('clients.store');
         Route::get('services/create', [ServiceController::class, 'create'])->name('services.create');
+        Route::post('services/seed', [ServiceController::class, 'seed'])->name('services.seed');
         Route::post('services', [ServiceController::class, 'store'])->name('services.store');
     });
 

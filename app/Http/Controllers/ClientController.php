@@ -7,6 +7,7 @@ use App\Models\Server;
 use App\Models\Service;
 use App\Models\Stack;
 use App\Models\StackService;
+use App\Services\Guide\SetupGuide;
 use App\Services\Stack\EnvResolver;
 use App\Services\Stack\PortAllocator;
 use Illuminate\Http\JsonResponse;
@@ -22,6 +23,7 @@ class ClientController extends Controller
     public function __construct(
         private readonly PortAllocator $ports,
         private readonly EnvResolver $env,
+        private readonly SetupGuide $guide,
     ) {}
 
     public function index(): Response
@@ -104,6 +106,7 @@ class ClientController extends Controller
         $services = Service::query()->orderBy('position')->orderBy('name')->get();
 
         return Inertia::render('clients/show', [
+            'steps' => $this->guide->client($client),
             'client' => [
                 'id' => $client->id,
                 'name' => $client->name,

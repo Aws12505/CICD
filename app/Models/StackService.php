@@ -23,6 +23,7 @@ class StackService extends Model
         'enabled',
         'edition',
         'host_port',
+        'process_ports',
         'current_digest',
         'desired_digest',
         'state',
@@ -38,6 +39,7 @@ class StackService extends Model
         return [
             'enabled' => 'boolean',
             'host_port' => 'integer',
+            'process_ports' => 'array',
             'last_deployed_at' => 'datetime',
             'initialized_at' => 'datetime',
         ];

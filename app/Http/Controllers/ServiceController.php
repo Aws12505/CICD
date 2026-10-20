@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Build;
 use App\Models\Service;
 use App\Models\ServiceEnvDefinition;
+use Database\Seeders\ServiceCatalogSeeder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -110,6 +111,23 @@ class ServiceController extends Controller
     }
 
     /**
+     * Add the eleven services as they are in the repositories today. Running
+     * it again updates them and adds any new env keys without touching edits.
+     */
+    public function seed(): RedirectResponse
+    {
+        $before = Service::count();
+
+        (new ServiceCatalogSeeder)->run();
+
+        $added = Service::count() - $before;
+
+        return redirect()->route('services.index')->with('success', $added > 0
+            ? "{$added} services added. Open each one to check its settings before enabling it for a client."
+            : 'The catalog is up to date.');
+    }
+
+    /**
      * How a service runs on a stack: its pizzasys name, its extra databases,
      * the processes beside the web container, and the commands a deploy runs.
      */
@@ -123,6 +141,8 @@ class ServiceController extends Controller
             'processes' => ['array'],
             'processes.*.name' => ['required', 'string', 'max:32', 'regex:/^[a-z0-9-]+$/', 'distinct'],
             'processes.*.command' => ['required', 'string', 'max:500'],
+            'processes.*.port' => ['nullable', 'integer', 'min:1', 'max:65535'],
+            'processes.*.path' => ['nullable', 'string', 'max:100', 'regex:#^/[A-Za-z0-9_./-]*$#'],
             'first_run_commands' => ['array'],
             'first_run_commands.*' => ['string', 'max:500'],
             'every_deploy_commands' => ['array'],

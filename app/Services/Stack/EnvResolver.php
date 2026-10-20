@@ -171,6 +171,12 @@ class EnvResolver
             return substr($property, 9).($stack->isLive() ? '' : '_testing');
         }
 
+        // "container:reverb" — the name of one of this service's process
+        // containers, for the service to reach it on the Docker network.
+        if (str_starts_with($property, 'container:')) {
+            return $stack->compose_project.'_'.$service->slug.'_'.substr($property, 10);
+        }
+
         return match ($property) {
             'database' => $stack->databaseFor($service),
             'domain' => $stack->domainFor($service),
@@ -246,13 +252,17 @@ class EnvResolver
     {
         [$slug, $path] = array_pad(explode(':', (string) $definition->default_value, 2), 2, '');
 
+        // "notifications@host" — the bare hostname, for websocket clients.
+        $hostOnly = str_ends_with($slug, '@host');
+        $slug = $hostOnly ? substr($slug, 0, -5) : $slug;
+
         $target = Service::query()->where('slug', $slug)->first();
 
         if ($target === null) {
             return null;
         }
 
-        return 'https://'.$stack->domainFor($target).$path;
+        return $hostOnly ? $stack->domainFor($target) : 'https://'.$stack->domainFor($target).$path;
     }
 
     /**

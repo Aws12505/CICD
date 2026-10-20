@@ -1,259 +1,238 @@
 import { Head, Link } from '@inertiajs/react';
-import { Activity, CheckCircle2, GitBranch, XCircle } from 'lucide-react';
+import { ArrowRight, BookOpen, CheckCircle2 } from 'lucide-react';
 import { FleetView } from '@/components/fleet-view';
 import type { FleetServer } from '@/components/fleet-view';
-import { RunStatusBadge } from '@/components/run-status-badge';
+import { SetupSteps, StepAction } from '@/components/setup-steps';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { PlaceholderPattern } from '@/components/ui/placeholder-pattern';
+import { useAbilities } from '@/hooks/use-abilities';
 import { dashboard } from '@/routes';
+import type { GuideClient, GuideStep } from '@/types/guide';
+
+const RECENT_RUNS_SHOWN = 5;
+
+/** One sentence on where a client stands. */
+function clientSummary(client: GuideClient): string {
+    if (client.next) {
+        return `Next: ${client.next.title.toLowerCase()} — ${client.next.detail}`;
+    }
+
+    if (client.behind > 0) {
+        return 'Newer builds are waiting. Promote from Versions when the client is ready.';
+    }
+
+    return 'Up to date.';
+}
 
 interface RecentRun {
     id: number;
     project_name: string;
     branch: string;
     status: string;
-    commit_sha: string | null;
-    commit_message: string | null;
-    pusher: string | null;
-    duration_ms: number | null;
     created_at: string | null;
-}
-
-interface ProjectCard {
-    id: number;
-    name: string;
-    repo_name: string;
-    pipelines: {
-        id: number;
-        branch: string;
-        enabled: boolean;
-        last_status: string | null;
-    }[];
 }
 
 interface Props {
     recentRuns: RecentRun[];
-    projects: ProjectCard[];
-    stats: {
-        total_runs: number;
-        running: number;
-        success: number;
-        failed: number;
+    projects: { id: number }[];
+    guide: {
+        next: GuideStep | null;
+        setup: GuideStep[];
+        clients: GuideClient[];
     };
     fleet: FleetServer[] | null;
 }
 
-function fmtDuration(ms: number | null) {
-    if (!ms) {
-        return '—';
-    }
-
-    return ms < 1000 ? `${ms}ms` : `${Math.round(ms / 1000)}s`;
-}
-
 export default function Dashboard({
-    recentRuns,
-    projects,
-    stats,
+    guide,
     fleet,
+    projects,
+    recentRuns,
 }: Props) {
-    const totalPipelines = projects.reduce(
-        (sum, project) => sum + project.pipelines.length,
-        0,
-    );
-    const cards = [
-        {
-            label: 'Total runs',
-            value: stats.total_runs,
-            icon: Activity,
-            tone: 'text-foreground',
-        },
-        {
-            label: 'Active',
-            value: stats.running,
-            icon: Activity,
-            tone: 'text-sky-500',
-        },
-        {
-            label: 'Succeeded',
-            value: stats.success,
-            icon: CheckCircle2,
-            tone: 'text-emerald-500',
-        },
-        {
-            label: 'Failed',
-            value: stats.failed,
-            icon: XCircle,
-            tone: 'text-red-500',
-        },
-    ];
+    const { manage: canManage } = useAbilities();
+    const setupDone = guide.setup.every((s) => s.status === 'done');
 
     return (
         <>
             <Head title="Dashboard" />
             <div className="flex h-full flex-1 flex-col gap-6 p-4">
-                {fleet && <FleetView servers={fleet} />}
-
-                <Card className="relative overflow-hidden border border-sidebar-border/60 bg-card/80">
-                    <PlaceholderPattern className="absolute inset-0 text-muted/30" />
-                    <CardContent className="relative flex flex-col gap-6 p-6 lg:flex-row lg:items-end lg:justify-between">
-                        <div className="space-y-4">
-                            <div className="flex flex-wrap items-center gap-2 text-xs tracking-[0.2em] text-muted-foreground uppercase">
-                                CI control center
-                                <Badge variant="secondary">
-                                    {stats.running} active
-                                </Badge>
-                                <Badge variant="secondary">
-                                    {projects.length} projects
-                                </Badge>
-                                <Badge variant="secondary">
-                                    {totalPipelines} pipelines
-                                </Badge>
-                            </div>
-                            <div>
-                                <h1 className="font-display text-3xl font-semibold sm:text-4xl">
-                                    Deployment health, clear and fast.
-                                </h1>
-                                <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-                                    Track pipeline activity, spot failures
-                                    quickly, and keep your releases flowing
-                                    across every branch.
-                                </p>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                <Button asChild>
-                                    <Link href="/projects/create">
-                                        New project
+                {/* The one thing to do next. */}
+                <Card className="border-primary/30 bg-primary/5">
+                    <CardContent className="flex flex-col gap-4 p-6 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="min-w-0">
+                            <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase">
+                                {guide.next
+                                    ? `Next step · ${guide.next.scope}`
+                                    : 'All set'}
+                            </p>
+                            <h1 className="font-display mt-1 text-3xl font-semibold">
+                                {guide.next
+                                    ? guide.next.title
+                                    : 'Everything is set up and current.'}
+                            </h1>
+                            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                                {guide.next
+                                    ? guide.next.detail
+                                    : 'When a developer merges, a build appears under Builds. Update a client from Versions when you want them to have it.'}
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            {guide.next && canManage && (
+                                <StepAction
+                                    step={guide.next}
+                                    size="lg"
+                                    variant="default"
+                                />
+                            )}
+                            {!guide.next && (
+                                <Button asChild size="lg">
+                                    <Link href="/versions">
+                                        Open Versions{' '}
+                                        <ArrowRight className="size-4" />
                                     </Link>
                                 </Button>
-                                <Button variant="outline" asChild>
-                                    <Link href="/runs">View runs</Link>
-                                </Button>
-                            </div>
-                        </div>
-                        <div className="grid w-full gap-3 sm:grid-cols-2 lg:w-[360px]">
-                            {cards.map((c) => (
-                                <Card
-                                    key={c.label}
-                                    className="border border-sidebar-border/70 bg-background/70 px-4 py-3 shadow-sm"
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs text-muted-foreground">
-                                            {c.label}
-                                        </span>
-                                        <c.icon
-                                            className={`size-4 ${c.tone}`}
-                                        />
-                                    </div>
-                                    <div className="mt-2 text-2xl font-semibold">
-                                        {c.value}
-                                    </div>
-                                </Card>
-                            ))}
+                            )}
+                            <Button asChild variant="outline" size="lg">
+                                <Link href="/guide">
+                                    <BookOpen className="size-4" /> How this
+                                    works
+                                </Link>
+                            </Button>
                         </div>
                     </CardContent>
                 </Card>
 
-                <div className="grid gap-6 lg:grid-cols-3">
-                    <Card className="lg:col-span-2">
-                        <CardHeader className="border-b border-sidebar-border/70">
-                            <div className="flex items-center justify-between">
-                                <CardTitle>Recent runs</CardTitle>
-                                <Button variant="ghost" size="sm" asChild>
-                                    <Link href="/runs">All runs</Link>
-                                </Button>
-                            </div>
-                        </CardHeader>
-                        <div className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
-                            {recentRuns.length === 0 && (
-                                <p className="p-6 text-sm text-muted-foreground">
-                                    No runs yet. Push to a configured repo to
-                                    trigger one.
-                                </p>
-                            )}
-                            {recentRuns.map((run) => (
-                                <Link
-                                    key={run.id}
-                                    href={`/runs/${run.id}`}
-                                    className="flex items-center justify-between p-4 hover:bg-muted/50"
-                                >
-                                    <div className="min-w-0">
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-medium">
-                                                {run.project_name}
-                                            </span>
-                                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                                                <GitBranch className="size-3" />
-                                                {run.branch}
-                                            </span>
-                                        </div>
-                                        <p className="truncate text-xs text-muted-foreground">
-                                            {run.commit_message ?? '—'}
-                                        </p>
-                                    </div>
-                                    <div className="flex items-center gap-4">
-                                        <span className="text-xs text-muted-foreground">
-                                            {fmtDuration(run.duration_ms)}
-                                        </span>
-                                        <RunStatusBadge
-                                            status={run.status as never}
-                                        />
-                                    </div>
-                                </Link>
-                            ))}
-                        </div>
-                    </Card>
-
+                {!setupDone && (
                     <Card>
                         <CardHeader className="border-b border-sidebar-border/70">
-                            <div className="flex items-center justify-between">
-                                <CardTitle>Projects</CardTitle>
-                                <Button variant="ghost" size="sm" asChild>
-                                    <Link href="/projects">All projects</Link>
-                                </Button>
-                            </div>
+                            <CardTitle>Setting up the control plane</CardTitle>
                         </CardHeader>
-                        <div className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
-                            {projects.length === 0 && (
-                                <Link
-                                    href="/projects/create"
-                                    className="block p-6 text-sm text-muted-foreground hover:bg-muted/50"
-                                >
-                                    No projects yet - create one.
-                                </Link>
-                            )}
-                            {projects.map((p) => (
-                                <Link
-                                    key={p.id}
-                                    href={`/projects/${p.id}`}
-                                    className="block p-4 hover:bg-muted/50"
-                                >
-                                    <div className="font-medium">{p.name}</div>
-                                    <div className="text-xs text-muted-foreground">
-                                        {p.repo_name}
-                                    </div>
-                                    <div className="mt-2 flex flex-wrap gap-1.5">
-                                        {p.pipelines.map((pl) => (
-                                            <span
-                                                key={pl.id}
-                                                className="flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[10px]"
-                                            >
-                                                {pl.branch}
-                                                <RunStatusBadge
-                                                    status={
-                                                        pl.last_status as never
-                                                    }
-                                                />
-                                            </span>
-                                        ))}
-                                    </div>
-                                </Link>
-                            ))}
-                        </div>
+                        <CardContent className="p-0">
+                            <SetupSteps
+                                steps={guide.setup}
+                                canAct={canManage}
+                            />
+                        </CardContent>
                     </Card>
-                </div>
+                )}
+
+                <Card>
+                    <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-sidebar-border/70">
+                        <CardTitle>Clients</CardTitle>
+                        {canManage && (
+                            <Button asChild size="sm" variant="outline">
+                                <Link href="/clients/create">Add a client</Link>
+                            </Button>
+                        )}
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        {guide.clients.length === 0 ? (
+                            <p className="p-4 text-sm text-muted-foreground">
+                                No clients yet. Finish the setup above, then add
+                                the first one.
+                            </p>
+                        ) : (
+                            <div className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
+                                {guide.clients.map((client) => (
+                                    <div
+                                        key={client.id}
+                                        className="flex flex-wrap items-center justify-between gap-3 p-4"
+                                    >
+                                        <div className="min-w-0">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <Link
+                                                    href={`/clients/${client.slug}`}
+                                                    className="font-medium hover:underline"
+                                                >
+                                                    {client.name}
+                                                </Link>
+                                                <span className="font-mono text-xs text-muted-foreground">
+                                                    {client.domain}
+                                                </span>
+                                                {client.done ===
+                                                client.total ? (
+                                                    <Badge variant="secondary">
+                                                        <CheckCircle2 className="mr-1 size-3" />
+                                                        live
+                                                    </Badge>
+                                                ) : (
+                                                    <Badge variant="outline">
+                                                        {client.done} of{' '}
+                                                        {client.total} steps
+                                                    </Badge>
+                                                )}
+                                                {client.behind > 0 && (
+                                                    <Badge
+                                                        variant="outline"
+                                                        className="border-amber-500/50 text-amber-700 dark:text-amber-400"
+                                                    >
+                                                        {client.behind}{' '}
+                                                        {client.behind === 1
+                                                            ? 'service'
+                                                            : 'services'}{' '}
+                                                        behind on live
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                            <p className="mt-1 text-sm text-muted-foreground">
+                                                {clientSummary(client)}
+                                            </p>
+                                        </div>
+                                        {canManage && client.next && (
+                                            <StepAction step={client.next} />
+                                        )}
+                                        {canManage &&
+                                            !client.next &&
+                                            client.behind > 0 && (
+                                                <Button asChild size="sm">
+                                                    <Link href="/versions">
+                                                        Open Versions{' '}
+                                                        <ArrowRight className="size-4" />
+                                                    </Link>
+                                                </Button>
+                                            )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {fleet && <FleetView servers={fleet} />}
+
+                {projects.length > 0 && (
+                    <Card>
+                        <CardHeader className="flex-row items-center justify-between space-y-0">
+                            <CardTitle>Old pipelines</CardTitle>
+                            <Button asChild size="sm" variant="ghost">
+                                <Link href="/runs">All runs</Link>
+                            </Button>
+                        </CardHeader>
+                        <CardContent className="grid gap-1 text-sm">
+                            <p className="text-xs text-muted-foreground">
+                                The previous deploy tool, kept until every
+                                client is on the control plane.
+                            </p>
+                            {recentRuns
+                                .slice(0, RECENT_RUNS_SHOWN)
+                                .map((run) => (
+                                    <Link
+                                        key={run.id}
+                                        href={`/runs/${run.id}`}
+                                        className="flex items-center justify-between gap-2 hover:underline"
+                                    >
+                                        <span>
+                                            {run.project_name} · {run.branch}
+                                        </span>
+                                        <Badge variant="outline">
+                                            {run.status}
+                                        </Badge>
+                                    </Link>
+                                ))}
+                        </CardContent>
+                    </Card>
+                )}
             </div>
         </>
     );

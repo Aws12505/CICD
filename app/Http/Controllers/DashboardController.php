@@ -4,13 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Models\PipelineRun;
 use App\Models\Project;
+use App\Services\Guide\SetupGuide;
 use App\Services\Monitoring\Fleet;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class DashboardController extends Controller
 {
-    public function __invoke(Fleet $fleet): Response
+    public function __invoke(Fleet $fleet, SetupGuide $guide): Response
     {
         $recentRuns = PipelineRun::query()
             ->with('pipeline.project')
@@ -60,6 +61,12 @@ class DashboardController extends Controller
             'recentRuns' => $recentRuns,
             'projects' => $projects,
             'stats' => $stats,
+            // What to do next, worked out from the actual state.
+            'guide' => [
+                'next' => $guide->next(),
+                'setup' => $guide->setup(),
+                'clients' => $guide->clients(),
+            ],
             // Servers hold the keys to client machines; only admins see them.
             'fleet' => request()->user()?->hasRole('admin') ? $fleet->servers() : null,
         ]);
