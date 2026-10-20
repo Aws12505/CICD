@@ -24,6 +24,7 @@ type ServiceDetail = ServiceRow &
     ServiceCatalog & {
         repo_full_name: string;
         default_branch: string;
+        main_branch: string;
         dockerfile_path: string | null;
         database_name: string | null;
         health_path: string;
@@ -76,7 +77,9 @@ export default function ServiceShow({
                         )}
                     </div>
                     <p className="mt-1 font-mono text-sm text-muted-foreground">
-                        {service.repo_full_name} · {service.default_branch}
+                        {service.repo_full_name} · builds from{' '}
+                        {service.default_branch} · record on{' '}
+                        {service.main_branch}
                     </p>
                     <p className="mt-1 font-mono text-xs text-muted-foreground">
                         {service.image_repository}

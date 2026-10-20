@@ -1,6 +1,7 @@
-import { Head, useForm } from '@inertiajs/react';
+import { Head, Link, useForm } from '@inertiajs/react';
 import type { FormEventHandler } from 'react';
 import InputError from '@/components/input-error';
+import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -52,16 +53,24 @@ export default function ControlPlaneSettings({
         <>
             <Head title="Settings" />
             <form onSubmit={submit} className="flex flex-col gap-6 p-4">
-                <div>
-                    <h1 className="font-display text-3xl font-semibold">
-                        Settings
-                    </h1>
-                    <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                        Shared by every client. Tokens are stored encrypted and
-                        never shown again; leave a token field empty to keep the
-                        one already saved.
-                    </p>
-                </div>
+                <PageHeader
+                    eyebrow="Set up once"
+                    title="Settings"
+                    description={
+                        <>
+                            Shared by every client. Tokens are stored encrypted
+                            and never shown again; leave a token field empty to
+                            keep the one already saved. The{' '}
+                            <Link
+                                href="/guide#github-token"
+                                className="underline"
+                            >
+                                Guide
+                            </Link>{' '}
+                            shows where each token comes from.
+                        </>
+                    }
+                />
 
                 <Card>
                     <CardHeader>

@@ -1,5 +1,6 @@
 import { Head, Link } from '@inertiajs/react';
-import { Badge } from '@/components/ui/badge';
+import { PageHeader } from '@/components/page-header';
+import { StatusPill } from '@/components/status-pill';
 import { Card } from '@/components/ui/card';
 import type { TaskSummary } from '@/types/task';
 
@@ -8,15 +9,11 @@ export default function TasksIndex({ tasks }: { tasks: TaskSummary[] }) {
         <>
             <Head title="Activity" />
             <div className="flex h-full flex-1 flex-col gap-4 p-4">
-                <div>
-                    <h1 className="font-display text-3xl font-semibold">
-                        Activity
-                    </h1>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                        Every server setup, build, release and restore, with its
-                        full log.
-                    </p>
-                </div>
+                <PageHeader
+                    eyebrow="Watch"
+                    title="Activity"
+                    description="Every server setup, build, release, backup and restore, with its full log. What is running right now is at the top."
+                />
                 <Card>
                     <div className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
                         {tasks.length === 0 && (
@@ -41,15 +38,7 @@ export default function TasksIndex({ tasks }: { tasks: TaskSummary[] }) {
                                             ` · ${new Date(task.created_at).toLocaleString()}`}
                                     </div>
                                 </div>
-                                <Badge
-                                    variant={
-                                        task.status === 'failed'
-                                            ? 'destructive'
-                                            : 'secondary'
-                                    }
-                                >
-                                    {task.status}
-                                </Badge>
+                                <StatusPill status={task.status} />
                             </Link>
                         ))}
                     </div>

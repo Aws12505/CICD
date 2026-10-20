@@ -185,7 +185,7 @@ test('going live advances main on GitHub, only as a fast-forward; testing never 
     Setting::put(Setting::GITHUB_TOKEN, 'github_pat_x');
     Http::fake(['api.github.com/*' => Http::response([], 200)]);
     $client = twoTierClient();
-    $service = Service::factory()->create(['slug' => 'hiring', 'subdomain' => 'hiring', 'repo_full_name' => 'RnD-Experts-Team/HiringPizza']);
+    $service = Service::factory()->create(['slug' => 'hiring', 'subdomain' => 'hiring', 'repo_full_name' => 'RnD-Experts-Team/HiringPizza', 'main_branch' => 'events']);
     entitle($client->testingStack(), $service);
     entitle($client->liveStack(), $service);
     $build = successfulBuild($service, 'sha256:new');
@@ -196,7 +196,7 @@ test('going live advances main on GitHub, only as a fast-forward; testing never 
     runnerWith(new RecordingRunner)->run(releaseOf($client->liveStack(), $service, $build, Release::KIND_PROMOTION), new NullTarget);
 
     Http::assertSent(fn ($request) => $request->method() === 'PATCH'
-        && str_ends_with($request->url(), 'repos/RnD-Experts-Team/HiringPizza/git/refs/heads/main')
+        && str_ends_with($request->url(), 'repos/RnD-Experts-Team/HiringPizza/git/refs/heads/events')
         && $request['sha'] === $build->commit_sha
         && $request['force'] === false);
 });

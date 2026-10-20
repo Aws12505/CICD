@@ -1,8 +1,9 @@
 import { Head, Link } from '@inertiajs/react';
-import { ArrowRight, BookOpen, CheckCircle2 } from 'lucide-react';
+import { ArrowRight, BookOpen } from 'lucide-react';
 import { FleetView } from '@/components/fleet-view';
 import type { FleetServer } from '@/components/fleet-view';
 import { SetupSteps, StepAction } from '@/components/setup-steps';
+import { StatusPill } from '@/components/status-pill';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -58,7 +59,7 @@ export default function Dashboard({
             <Head title="Dashboard" />
             <div className="flex h-full flex-1 flex-col gap-6 p-4">
                 {/* The one thing to do next. */}
-                <Card className="border-primary/30 bg-primary/5">
+                <Card className="surface-raised border-primary/30 bg-gradient-to-br from-primary/10 via-card to-card">
                     <CardContent className="flex flex-col gap-4 p-6 lg:flex-row lg:items-center lg:justify-between">
                         <div className="min-w-0">
                             <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase">
@@ -66,7 +67,7 @@ export default function Dashboard({
                                     ? `Next step · ${guide.next.scope}`
                                     : 'All set'}
                             </p>
-                            <h1 className="font-display mt-1 text-3xl font-semibold">
+                            <h1 className="mt-1 font-display text-3xl font-semibold">
                                 {guide.next
                                     ? guide.next.title
                                     : 'Everything is set up and current.'}
@@ -152,27 +153,23 @@ export default function Dashboard({
                                                 </span>
                                                 {client.done ===
                                                 client.total ? (
-                                                    <Badge variant="secondary">
-                                                        <CheckCircle2 className="mr-1 size-3" />
+                                                    <StatusPill tone="success">
                                                         live
-                                                    </Badge>
+                                                    </StatusPill>
                                                 ) : (
-                                                    <Badge variant="outline">
+                                                    <StatusPill tone="info">
                                                         {client.done} of{' '}
                                                         {client.total} steps
-                                                    </Badge>
+                                                    </StatusPill>
                                                 )}
                                                 {client.behind > 0 && (
-                                                    <Badge
-                                                        variant="outline"
-                                                        className="border-amber-500/50 text-amber-700 dark:text-amber-400"
-                                                    >
+                                                    <StatusPill tone="warning">
                                                         {client.behind}{' '}
                                                         {client.behind === 1
                                                             ? 'service'
                                                             : 'services'}{' '}
                                                         behind on live
-                                                    </Badge>
+                                                    </StatusPill>
                                                 )}
                                             </div>
                                             <p className="mt-1 text-sm text-muted-foreground">

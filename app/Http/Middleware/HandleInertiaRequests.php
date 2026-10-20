@@ -2,8 +2,10 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\Guide\SetupGuide;
 use App\Support\Roles;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -52,6 +54,11 @@ class HandleInertiaRequests extends Middleware
                 ],
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            // The one thing to do next, shown in every page's header. Cached
+            // briefly; the actions that change it clear the cache.
+            'nextStep' => $request->user()
+                ? Cache::remember(SetupGuide::CACHE_KEY, 20, fn () => app(SetupGuide::class)->next())
+                : null,
         ];
     }
 }

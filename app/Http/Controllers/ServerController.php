@@ -6,6 +6,7 @@ use App\Jobs\ProvisionServerJob;
 use App\Models\Server;
 use App\Models\Stack;
 use App\Models\Task;
+use App\Services\Guide\SetupGuide;
 use App\Services\Remote\ServerProbe;
 use App\Support\SshKeypair;
 use Illuminate\Http\RedirectResponse;
@@ -147,6 +148,7 @@ class ServerController extends Controller
         }
 
         $server->forceFill(['capabilities' => $this->probe->capabilities($server)])->save();
+        SetupGuide::forget();
 
         return back()->with('success', 'Connected: '.$result->output());
     }

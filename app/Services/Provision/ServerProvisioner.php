@@ -5,6 +5,7 @@ namespace App\Services\Provision;
 use App\Models\Server;
 use App\Models\Setting;
 use App\Models\Task;
+use App\Services\Guide\SetupGuide;
 use App\Services\Remote\CommandRunner;
 use App\Services\Remote\RemoteFiles;
 use App\Services\Remote\ServerProbe;
@@ -119,6 +120,7 @@ class ServerProvisioner
                 'capabilities' => $this->probe->capabilities($server),
             ])->save();
             $server->markOnline();
+            SetupGuide::forget();
 
             $task->succeed('The server is ready. Deploy a stack to it next.');
 

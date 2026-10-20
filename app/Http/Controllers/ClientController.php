@@ -96,6 +96,8 @@ class ClientController extends Controller
             ]);
         }
 
+        SetupGuide::forget();
+
         return redirect()->route('clients.show', $client)->with('success', 'Client created with both tiers.');
     }
 
@@ -178,6 +180,8 @@ class ClientController extends Controller
         if ($data['enabled']) {
             $this->ports->assign($entitlement);
         }
+
+        SetupGuide::forget();
 
         return back()->with('success', 'Entitlement saved. It takes effect on the next release.');
     }

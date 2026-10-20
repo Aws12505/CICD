@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Build;
 use App\Models\Service;
 use App\Models\ServiceEnvDefinition;
+use App\Services\Guide\SetupGuide;
 use Database\Seeders\ServiceCatalogSeeder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -37,7 +38,10 @@ class ServiceController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $service = Service::create($this->validated($request));
+        $data = $this->validated($request);
+        $data['main_branch'] = $data['main_branch'] ?: 'main';
+
+        $service = Service::create($data);
 
         return redirect()->route('services.show', $service)->with('success', 'Service added.');
     }
@@ -50,6 +54,7 @@ class ServiceController extends Controller
             'service' => $this->summarise($service) + [
                 'repo_full_name' => $service->repo_full_name,
                 'default_branch' => $service->default_branch,
+                'main_branch' => $service->main_branch,
                 'dockerfile_path' => $service->dockerfile_path,
                 'database_name' => $service->database_name,
                 'health_path' => $service->health_path,
@@ -121,6 +126,7 @@ class ServiceController extends Controller
         (new ServiceCatalogSeeder)->run();
 
         $added = Service::count() - $before;
+        SetupGuide::forget();
 
         return redirect()->route('services.index')->with('success', $added > 0
             ? "{$added} services added. Open each one to check its settings before enabling it for a client."
@@ -249,6 +255,7 @@ class ServiceController extends Controller
             'slug' => ['required', 'string', 'max:64', 'alpha_dash', Rule::unique('services', 'slug')->ignore($service?->id)],
             'repo_full_name' => ['required', 'string', 'max:255'],
             'default_branch' => ['required', 'string', 'max:128'],
+            'main_branch' => ['nullable', 'string', 'max:128'],
             'build_recipe' => ['required', Rule::in(array_keys($this->recipes()))],
             'dockerfile_path' => ['nullable', 'string', 'max:255'],
             'subdomain' => ['required', 'string', 'max:64'],

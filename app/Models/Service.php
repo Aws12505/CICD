@@ -28,6 +28,7 @@ class Service extends Model
         'slug',
         'repo_full_name',
         'default_branch',
+        'main_branch',
         'build_recipe',
         'dockerfile_path',
         'subdomain',

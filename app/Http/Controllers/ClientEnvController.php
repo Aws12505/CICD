@@ -11,6 +11,7 @@ use App\Models\Stack;
 use App\Models\StackEnvValue;
 use App\Models\StackService;
 use App\Models\Task;
+use App\Services\Guide\SetupGuide;
 use App\Services\Stack\EnvResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
@@ -144,6 +145,8 @@ class ClientEnvController extends Controller
 
             $changed++;
         }
+
+        SetupGuide::forget();
 
         return back()->with('success', $changed === 0
             ? 'Nothing changed.'

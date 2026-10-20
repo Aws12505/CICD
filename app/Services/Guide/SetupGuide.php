@@ -11,6 +11,7 @@ use App\Models\Stack;
 use App\Models\StackService;
 use App\Services\Stack\EnvResolver;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Works out, from the actual state, what to do next and where.
@@ -26,6 +27,15 @@ class SetupGuide
     public const DONE = 'done';
 
     public const BLOCKED = 'blocked';
+
+    /** The header's "Next" chip is cached under this; see forget(). */
+    public const CACHE_KEY = 'guide:next';
+
+    /** Call after anything that moves a step. */
+    public static function forget(): void
+    {
+        Cache::forget(self::CACHE_KEY);
+    }
 
     public function __construct(private readonly EnvResolver $env) {}
 

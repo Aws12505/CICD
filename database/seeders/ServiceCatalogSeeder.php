@@ -52,8 +52,9 @@ class ServiceCatalogSeeder extends Seeder
                 'slug' => 'pizzasys',
                 'name' => 'Auth (pizzasys)',
                 'repo_full_name' => self::ORG.'/pizzasys',
-                // The repository has no `testing` branch yet.
-                'default_branch' => 'main',
+                // This repository calls its branches events / events_testing.
+                'default_branch' => 'events_testing',
+                'main_branch' => 'events',
                 'subdomain' => 'auth',
                 'database_name' => 'pizzasys',
                 'identity_provider' => true,
@@ -220,8 +221,9 @@ class ServiceCatalogSeeder extends Seeder
                 'slug' => 'qa',
                 'name' => 'QA (AuditApp)',
                 'repo_full_name' => self::ORG.'/AuditApp',
-                // The repository has no `testing` branch yet.
-                'default_branch' => 'main',
+                // This repository calls its branches events / events_testing.
+                'default_branch' => 'events_testing',
+                'main_branch' => 'events',
                 'subdomain' => 'qa',
                 'database_name' => 'auditapp',
                 'auth_service_name' => 'QA',
@@ -270,6 +272,7 @@ class ServiceCatalogSeeder extends Seeder
                 'name' => 'Dashboard',
                 'repo_full_name' => self::ORG.'/b-dashboard-pizza',
                 'default_branch' => 'testing',
+                'main_branch' => 'main',
                 'build_recipe' => Service::RECIPE_NEXTJS,
                 'dockerfile_path' => null,
                 'subdomain' => 'app',
@@ -398,6 +401,7 @@ class ServiceCatalogSeeder extends Seeder
 
         return array_merge([
             'default_branch' => 'testing',
+            'main_branch' => 'main',
             'build_recipe' => Service::RECIPE_LARAVEL_API,
             'dockerfile_path' => null,
             'health_path' => '/up',

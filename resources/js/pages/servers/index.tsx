@@ -1,10 +1,11 @@
 import { Head, Link } from '@inertiajs/react';
 import { Plus, Server as ServerIcon } from 'lucide-react';
+import { PageHeader } from '@/components/page-header';
 import { ServerStatusBadge } from '@/components/server-status-badge';
+import { StatusPill } from '@/components/status-pill';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { PlaceholderPattern } from '@/components/ui/placeholder-pattern';
+import { Card } from '@/components/ui/card';
 import type { ServerSummary } from '@/types/server';
 
 export default function ServersIndex({
@@ -18,39 +19,30 @@ export default function ServersIndex({
         <>
             <Head title="Servers" />
             <div className="flex h-full flex-1 flex-col gap-6 p-4">
-                <Card className="relative overflow-hidden border border-sidebar-border/60 bg-card/80">
-                    <PlaceholderPattern className="absolute inset-0 text-muted/25" />
-                    <CardContent className="relative flex flex-col gap-4 p-6 lg:flex-row lg:items-center lg:justify-between">
-                        <div>
-                            <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase">
-                                Infrastructure
-                            </p>
-                            <h1 className="font-display text-3xl font-semibold">
-                                Servers
-                            </h1>
-                            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                                Machines this control plane can reach over SSH.
-                                Each one holds a key that grants root, so keys
-                                are encrypted at rest and host keys are pinned.
-                            </p>
-                            <div className="mt-3 flex flex-wrap gap-2">
-                                <Badge variant="secondary">
-                                    {servers.length} servers
-                                </Badge>
-                                {unverified > 0 && (
-                                    <Badge variant="destructive">
-                                        {unverified} unverified
-                                    </Badge>
-                                )}
-                            </div>
-                        </div>
+                <PageHeader
+                    eyebrow="Set up once"
+                    title="Servers"
+                    description="Each client's machine. The control plane makes a key for it, you paste one line into the VPS console, then it installs everything itself."
+                    meta={
+                        <>
+                            <Badge variant="secondary">
+                                {servers.length} servers
+                            </Badge>
+                            {unverified > 0 && (
+                                <StatusPill tone="warning">
+                                    {unverified} not verified yet
+                                </StatusPill>
+                            )}
+                        </>
+                    }
+                    actions={
                         <Button asChild>
                             <Link href="/servers/create">
                                 <Plus className="size-4" /> Add server
                             </Link>
                         </Button>
-                    </CardContent>
-                </Card>
+                    }
+                />
 
                 {servers.length === 0 ? (
                     <Card className="flex flex-col items-center gap-3 p-12 text-center">

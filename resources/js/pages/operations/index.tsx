@@ -1,6 +1,7 @@
 import { Head, router } from '@inertiajs/react';
 import { AlertTriangle, Check, HardDriveDownload } from 'lucide-react';
 import { useState } from 'react';
+import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -121,15 +122,11 @@ export default function OperationsIndex({
         <>
             <Head title="Operations" />
             <div className="flex h-full flex-1 flex-col gap-6 p-4">
-                <div>
-                    <h1 className="font-display text-3xl font-semibold">
-                        Operations
-                    </h1>
-                    <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                        Whether the estate is actually in the state we believe
-                        it is.
-                    </p>
-                </div>
+                <PageHeader
+                    eyebrow="Watch"
+                    title="Operations"
+                    description="Whether every server is really running what the control plane last deployed, and whether backups are fresh."
+                />
 
                 {stale.length > 0 && (
                     <Card className="border-amber-500/40 bg-amber-500/10">

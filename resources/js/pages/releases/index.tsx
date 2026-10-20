@@ -1,8 +1,8 @@
 import { Head, Link } from '@inertiajs/react';
 import { Rocket } from 'lucide-react';
+import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
-import { PlaceholderPattern } from '@/components/ui/placeholder-pattern';
+import { Card } from '@/components/ui/card';
 
 type ReleaseRow = {
     id: number;
@@ -36,22 +36,11 @@ export default function ReleasesIndex({
         <>
             <Head title="Releases" />
             <div className="flex h-full flex-1 flex-col gap-6 p-4">
-                <Card className="relative overflow-hidden border border-sidebar-border/60 bg-card/80">
-                    <PlaceholderPattern className="absolute inset-0 text-muted/25" />
-                    <CardContent className="relative p-6">
-                        <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase">
-                            Deployments
-                        </p>
-                        <h1 className="font-display text-3xl font-semibold">
-                            Releases
-                        </h1>
-                        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                            Every deploy, promotion, rollback and emergency.
-                            Each item records the digest it came from, which is
-                            what makes going back possible.
-                        </p>
-                    </CardContent>
-                </Card>
+                <PageHeader
+                    eyebrow="Ship"
+                    title="Releases"
+                    description="Every deploy, promotion, rollback and emergency, with its log. Each one records what ran before, which is what makes rolling back possible."
+                />
 
                 {releases.length === 0 ? (
                     <Card className="flex flex-col items-center gap-3 p-12 text-center">

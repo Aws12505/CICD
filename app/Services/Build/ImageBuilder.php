@@ -8,6 +8,7 @@ use App\Models\Setting;
 use App\Models\Stack;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\Guide\SetupGuide;
 use App\Services\Remote\CommandRunner;
 use App\Services\Remote\RemoteFiles;
 use App\Services\Stack\EnvResolver;
@@ -142,6 +143,7 @@ class ImageBuilder
             }
 
             $build->update(['status' => 'success', 'digest' => $digest, 'built_at' => now()]);
+            SetupGuide::forget();
             $task->succeed("{$build->label()} is ready to deploy ({$digest}).");
 
             return $build;

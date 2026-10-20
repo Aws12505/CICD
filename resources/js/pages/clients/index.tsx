@@ -1,9 +1,9 @@
 import { Head, Link } from '@inertiajs/react';
 import { Building2, Plus } from 'lucide-react';
+import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { PlaceholderPattern } from '@/components/ui/placeholder-pattern';
+import { Card } from '@/components/ui/card';
 import { useAbilities } from '@/hooks/use-abilities';
 import type { ClientRow } from '@/types/topology';
 
@@ -14,43 +14,41 @@ export default function ClientsIndex({ clients }: { clients: ClientRow[] }) {
         <>
             <Head title="Clients" />
             <div className="flex h-full flex-1 flex-col gap-6 p-4">
-                <Card className="relative overflow-hidden border border-sidebar-border/60 bg-card/80">
-                    <PlaceholderPattern className="absolute inset-0 text-muted/25" />
-                    <CardContent className="relative flex flex-col gap-4 p-6 lg:flex-row lg:items-center lg:justify-between">
-                        <div>
-                            <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase">
-                                Topology
-                            </p>
-                            <h1 className="font-display text-3xl font-semibold">
-                                Clients
-                            </h1>
-                            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                                Every client gets two stacks, live and testing.
-                                Which services each one runs is data here, never
-                                a fork of the code.
-                            </p>
-                            <div className="mt-3">
-                                <Badge variant="secondary">
-                                    {clients.length} clients
-                                </Badge>
-                            </div>
-                        </div>
-                        {canManage && (
+                <PageHeader
+                    eyebrow="Clients"
+                    title="Clients"
+                    description="One entry per client, with a testing and a live stack. What each one runs is a setting here, never a copy of the code."
+                    meta={
+                        <Badge variant="secondary">
+                            {clients.length} clients
+                        </Badge>
+                    }
+                    actions={
+                        canManage && (
                             <Button asChild>
                                 <Link href="/clients/create">
                                     <Plus className="size-4" /> Add client
                                 </Link>
                             </Button>
-                        )}
-                    </CardContent>
-                </Card>
+                        )
+                    }
+                />
 
                 {clients.length === 0 ? (
                     <Card className="flex flex-col items-center gap-3 p-12 text-center">
                         <Building2 className="size-10 text-muted-foreground" />
                         <p className="text-sm text-muted-foreground">
-                            No clients yet.
+                            No clients yet. A client is a company with its own
+                            server, domain and choice of services.
                         </p>
+                        {canManage && (
+                            <Button asChild>
+                                <Link href="/clients/create">
+                                    <Plus className="size-4" /> Add the first
+                                    client
+                                </Link>
+                            </Button>
+                        )}
                     </Card>
                 ) : (
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

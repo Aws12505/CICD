@@ -129,6 +129,8 @@ test('the standard services can be added with one click and refreshed without lo
 
     expect(Service::count())->toBe(11);
     expect(Service::where('identity_provider', true)->value('slug'))->toBe('pizzasys');
+    expect(Service::where('slug', 'pizzasys')->first())->default_branch->toBe('events_testing')->main_branch->toBe('events');
+    expect(Service::where('slug', 'qa')->first())->default_branch->toBe('events_testing')->main_branch->toBe('events');
 
     $hiring = Service::where('slug', 'hiring')->first();
     $hiring->update(['default_branch' => 'release']);

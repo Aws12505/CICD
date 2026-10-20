@@ -1,9 +1,9 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { Layers, Plus, Sparkles } from 'lucide-react';
+import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { PlaceholderPattern } from '@/components/ui/placeholder-pattern';
+import { Card } from '@/components/ui/card';
 import { useAbilities } from '@/hooks/use-abilities';
 import type { ServiceRow } from '@/types/topology';
 
@@ -18,32 +18,18 @@ export default function ServicesIndex({
         <>
             <Head title="Services" />
             <div className="flex h-full flex-1 flex-col gap-6 p-4">
-                <Card className="relative overflow-hidden border border-sidebar-border/60 bg-card/80">
-                    <PlaceholderPattern className="absolute inset-0 text-muted/25" />
-                    <CardContent className="relative flex flex-col gap-4 p-6 lg:flex-row lg:items-center lg:justify-between">
-                        <div>
-                            <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase">
-                                Catalogue
-                            </p>
-                            <h1 className="font-display text-3xl font-semibold">
-                                Services
-                            </h1>
-                            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                                One entry per service: its repository, the
-                                settings it needs, its worker processes and the
-                                commands a deploy runs. Clients pick from this
-                                list. "Add the standard services" fills it from
-                                the repositories; run it again any time to pick
-                                up new keys without losing your edits.
-                            </p>
-                            <div className="mt-3">
-                                <Badge variant="secondary">
-                                    {services.length} services
-                                </Badge>
-                            </div>
-                        </div>
-                        {canManage && (
-                            <div className="flex flex-wrap gap-2">
+                <PageHeader
+                    eyebrow="Set up once"
+                    title="Services"
+                    description='One entry per service: its repository, the settings it needs, its worker processes and the commands a deploy runs. Clients pick from this list. "Add the standard services" fills it from the repositories; run it again any time to pick up new keys without losing your edits.'
+                    meta={
+                        <Badge variant="secondary">
+                            {services.length} services
+                        </Badge>
+                    }
+                    actions={
+                        canManage && (
+                            <>
                                 <Button
                                     variant={
                                         services.length === 0
@@ -65,10 +51,10 @@ export default function ServicesIndex({
                                         service
                                     </Link>
                                 </Button>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+                            </>
+                        )
+                    }
+                />
 
                 {services.length === 0 ? (
                     <Card className="flex flex-col items-center gap-3 p-12 text-center">

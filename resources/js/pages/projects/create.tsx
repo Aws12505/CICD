@@ -50,7 +50,7 @@ export default function ProjectCreate({
         <>
             <Head title="New project" />
             <div className="mx-auto w-full max-w-2xl p-4">
-                <h1 className="font-display mb-2 text-3xl font-semibold">
+                <h1 className="mb-2 font-display text-3xl font-semibold">
                     New project
                 </h1>
                 <p className="mb-6 text-sm text-muted-foreground">

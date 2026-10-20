@@ -2,6 +2,7 @@ import { Head, Link, router, useForm } from '@inertiajs/react';
 import { Hammer } from 'lucide-react';
 import type { FormEventHandler } from 'react';
 import InputError from '@/components/input-error';
+import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -81,16 +82,11 @@ export default function BuildsIndex({
         <>
             <Head title="Builds" />
             <div className="flex h-full flex-1 flex-col gap-6 p-4">
-                <div>
-                    <h1 className="font-display text-3xl font-semibold">
-                        Builds
-                    </h1>
-                    <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-                        A merge into a service's default branch or an edition/…
-                        branch builds an image here. Nothing is deployed until
-                        you update a client from the Versions board.
-                    </p>
-                </div>
+                <PageHeader
+                    eyebrow="Ship"
+                    title="Builds"
+                    description="A merge into a service's build branch (or an edition/… branch) builds an image here, numbered per service. Nothing is deployed until you update a client from Versions."
+                />
 
                 {canManage && (
                     <Card>

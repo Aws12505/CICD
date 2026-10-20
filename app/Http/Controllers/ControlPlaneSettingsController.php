@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Setting;
+use App\Services\Guide\SetupGuide;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -108,6 +109,8 @@ class ControlPlaneSettingsController extends Controller
 
             Setting::put($key, $value === '' ? null : $value);
         }
+
+        SetupGuide::forget();
 
         return back()->with('success', 'Settings saved.');
     }

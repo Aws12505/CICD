@@ -1,6 +1,7 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { ArrowUpRight, Pin, PinOff, Rocket, TestTube2 } from 'lucide-react';
 import { useState } from 'react';
+import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -106,16 +107,11 @@ export default function VersionsIndex({ services, clients }: Props) {
             <Head title="Versions" />
             <div className="flex h-full flex-1 flex-col gap-6 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                        <h1 className="font-display text-3xl font-semibold">
-                            Versions
-                        </h1>
-                        <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-                            What every client runs. T is testing, L is live;
-                            "behind" counts newer builds for that client's
-                            edition. Each client moves on its own, by a click.
-                        </p>
-                    </div>
+                    <PageHeader
+                        eyebrow="Clients"
+                        title="Versions"
+                        description='What every client runs. T is testing, L is live; "behind" counts newer builds for that client. Each client moves on its own, by a click, never automatically.'
+                    />
                     {canManage && selected.length > 0 && (
                         <div className="flex flex-wrap gap-2">
                             <Button

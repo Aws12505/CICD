@@ -39,6 +39,7 @@ export default function RunsIndex({ runs }: { runs: Run[] }) {
         (acc, run) => {
             acc.total += 1;
             acc[run.status] = (acc[run.status] ?? 0) + 1;
+
             return acc;
         },
         { total: 0 } as Record<string, number>,

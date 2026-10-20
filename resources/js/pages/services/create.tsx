@@ -30,6 +30,7 @@ export default function ServiceCreate({
         slug: '',
         repo_full_name: '',
         default_branch: 'testing',
+        main_branch: 'main',
         build_recipe: 'laravel-api',
         dockerfile_path: '',
         subdomain: '',
@@ -143,7 +144,26 @@ export default function ServiceCreate({
                                 <InputError message={errors.default_branch} />
                                 <p className="text-xs text-muted-foreground">
                                     Images are built from this branch only.
-                                    Nothing is ever built from main.
+                                    Merging into it builds; it never deploys.
+                                </p>
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="main_branch">
+                                    Record branch
+                                </Label>
+                                <Input
+                                    id="main_branch"
+                                    className="font-mono"
+                                    value={data.main_branch}
+                                    onChange={(e) =>
+                                        setData('main_branch', e.target.value)
+                                    }
+                                />
+                                <InputError message={errors.main_branch} />
+                                <p className="text-xs text-muted-foreground">
+                                    Moved forward to whatever is live for any
+                                    client, as a record. Usually main; some
+                                    repositories call it events.
                                 </p>
                             </div>
                             <div className="grid gap-2">

@@ -62,7 +62,7 @@ export default function ProjectEdit({ project }: { project: Project }) {
         <>
             <Head title={`Edit ${project.name}`} />
             <div className="mx-auto w-full max-w-2xl p-4">
-                <h1 className="font-display mb-2 text-3xl font-semibold">
+                <h1 className="mb-2 font-display text-3xl font-semibold">
                     Edit project
                 </h1>
                 <p className="mb-6 text-sm text-muted-foreground">

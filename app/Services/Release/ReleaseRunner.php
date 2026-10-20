@@ -10,6 +10,7 @@ use App\Models\Stack;
 use App\Models\StackService;
 use App\Services\Backup\BackupService;
 use App\Services\GitHub\GitHub;
+use App\Services\Guide\SetupGuide;
 use App\Services\Provision\StackProvisioner;
 use App\Services\Remote\CommandRunner;
 use App\Services\Stack\CertificateIssuer;
@@ -122,6 +123,7 @@ class ReleaseRunner
             $this->certificates->ensure($stack, $target, $log);
 
             $release->update(['status' => 'succeeded', 'finished_at' => now()]);
+            SetupGuide::forget();
 
             // A stack is only active once something has actually been
             // deployed to it. Scheduled backups, drift polls and alerts select
@@ -410,14 +412,16 @@ class ReleaseRunner
                 continue;
             }
 
+            $main = $item->service->main_branch ?: 'main';
+
             try {
-                $response = $this->github->fastForward($item->service->repo_full_name, 'main', $build->commit_sha);
+                $response = $this->github->fastForward($item->service->repo_full_name, $main, $build->commit_sha);
 
                 $log($response->successful()
-                    ? "main on {$item->service->repo_full_name} now at {$build->shortSha()}.\n"
-                    : "main on {$item->service->repo_full_name} left where it is ({$response->status()}): it is already ahead or has diverged.\n");
+                    ? "{$main} on {$item->service->repo_full_name} now at {$build->shortSha()}.\n"
+                    : "{$main} on {$item->service->repo_full_name} left where it is ({$response->status()}): it is already ahead or has diverged.\n");
             } catch (Throwable $e) {
-                $log("Could not update main on {$item->service->repo_full_name}: {$e->getMessage()}\n");
+                $log("Could not update {$main} on {$item->service->repo_full_name}: {$e->getMessage()}\n");
             }
         }
     }
