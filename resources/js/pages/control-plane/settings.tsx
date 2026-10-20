@@ -1,7 +1,7 @@
 import { Head, Link, useForm } from '@inertiajs/react';
 import type { FormEventHandler } from 'react';
-import InputError from '@/components/input-error';
 import { GithubAccessTest } from '@/components/github-access-test';
+import InputError from '@/components/input-error';
 import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ type Field = {
     help: string;
     secret: boolean;
     set: boolean;
+    hint: string | null;
     value: string | null;
 };
 
@@ -141,6 +142,11 @@ export default function ControlPlaneSettings({
                                 <p className="text-xs text-muted-foreground">
                                     {field.help}
                                 </p>
+                                {field.hint && (
+                                    <p className="font-mono text-xs text-muted-foreground">
+                                        Saved: {field.hint}
+                                    </p>
+                                )}
                                 <InputError message={errors[field.key]} />
                             </div>
                         ))}

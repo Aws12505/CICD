@@ -15,6 +15,29 @@ use Illuminate\Support\Facades\Http;
  */
 class GitHub
 {
+    /**
+     * The environment that makes git authenticate to github.com with the saved
+     * token: an HTTP header, so the token is never written into a URL or the
+     * workspace's git config. Always forbids prompting: nobody can answer one.
+     *
+     * @return array<string, string>
+     */
+    public static function gitEnv(): array
+    {
+        $token = Setting::get(Setting::GITHUB_TOKEN);
+
+        if (blank($token)) {
+            return ['GIT_TERMINAL_PROMPT' => '0'];
+        }
+
+        return [
+            'GIT_TERMINAL_PROMPT' => '0',
+            'GIT_CONFIG_COUNT' => '1',
+            'GIT_CONFIG_KEY_0' => 'http.https://github.com/.extraheader',
+            'GIT_CONFIG_VALUE_0' => 'AUTHORIZATION: basic '.base64_encode('x-access-token:'.$token),
+        ];
+    }
+
     public function configured(): bool
     {
         return Setting::has(Setting::GITHUB_TOKEN);

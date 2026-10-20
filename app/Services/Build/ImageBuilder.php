@@ -8,11 +8,14 @@ use App\Models\Setting;
 use App\Models\Stack;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\GitHub\AccessCheck;
+use App\Services\GitHub\GitHub;
 use App\Services\Guide\SetupGuide;
 use App\Services\Remote\CommandRunner;
 use App\Services\Remote\RemoteFiles;
 use App\Services\Stack\EnvResolver;
 use App\Support\Shell;
+use App\Support\TokenInfo;
 use App\Targets\LocalTarget;
 use Throwable;
 
@@ -88,6 +91,7 @@ class ImageBuilder
 
         try {
             $task->step("Fetching {$service->repo_full_name}");
+            $task->log('GitHub token: '.(TokenInfo::describe(Setting::get(Setting::GITHUB_TOKEN)) ?? 'none saved')."\n");
 
             if (! $this->step($build, $task, 'fetch', $this->fetchScript($service, $workspace), $this->gitAuthEnv())) {
                 return $build;
@@ -356,9 +360,22 @@ class ImageBuilder
 
     private function refusedAccessMessage(Service $service): string
     {
-        return Setting::has(Setting::GITHUB_TOKEN)
-            ? "GitHub would not let the saved token read {$service->repo_full_name}. Open Settings and click \"Test GitHub access\": it checks every service repository and says what to change on GitHub (usually: the token's Resource owner must be the organisation, and its Repository access must include this repository with Contents → Read-only)."
-            : "No GitHub token is saved, and {$service->repo_full_name} is private. Add one in Settings (the Guide shows how), then build again.";
+        if (! Setting::has(Setting::GITHUB_TOKEN)) {
+            return "No GitHub token is saved, and {$service->repo_full_name} is private. Add one in Settings (the Guide shows how), then build again.";
+        }
+
+        // Ask GitHub why, with the same authentication the clone used.
+        try {
+            $check = app(AccessCheck::class)->service($service);
+        } catch (Throwable) {
+            $check = null;
+        }
+
+        $why = $check !== null && ! $check['ok']
+            ? $check['message']
+            : 'Open Settings and click "Test GitHub access" for the reason.';
+
+        return "GitHub would not let the saved token read {$service->repo_full_name}. {$why}";
     }
 
     private function fail(Build $build, Task $task, string $reason): Build
@@ -477,27 +494,10 @@ class ImageBuilder
         ];
     }
 
-    /**
-     * The GitHub token goes to git as an HTTP header through the environment,
-     * so it is never written into the workspace's git config or a URL.
-     *
-     * @return array<string, string>
-     */
+    /** @return array<string, string> */
     private function gitAuthEnv(): array
     {
-        $token = Setting::get(Setting::GITHUB_TOKEN);
-
-        // Never wait on a prompt nobody can answer, token or not.
-        if (blank($token)) {
-            return ['GIT_TERMINAL_PROMPT' => '0'];
-        }
-
-        return [
-            'GIT_TERMINAL_PROMPT' => '0',
-            'GIT_CONFIG_COUNT' => '1',
-            'GIT_CONFIG_KEY_0' => 'http.https://github.com/.extraheader',
-            'GIT_CONFIG_VALUE_0' => 'AUTHORIZATION: basic '.base64_encode('x-access-token:'.$token),
-        ];
+        return GitHub::gitEnv();
     }
 
     private function readDigest(string $reference): ?string

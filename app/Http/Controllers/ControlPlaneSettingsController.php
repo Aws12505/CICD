@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Service;
 use App\Models\Setting;
+use App\Services\GitHub\AccessCheck;
 use App\Services\GitHub\GitHub;
 use App\Services\Guide\SetupGuide;
+use App\Support\TokenInfo;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -69,6 +71,10 @@ class ControlPlaneSettingsController extends Controller
                 'help' => $help,
                 'secret' => $secret,
                 'set' => Setting::has($key),
+                // What kind of token is saved, never the token: catches pasting the wrong thing.
+                'hint' => $secret && in_array($key, [Setting::GITHUB_TOKEN, Setting::REGISTRY_PUSH_TOKEN, Setting::REGISTRY_PULL_TOKEN], true)
+                    ? TokenInfo::describe(Setting::get($key))
+                    : null,
                 'value' => $secret ? null : Setting::get($key),
             ];
         }
@@ -86,25 +92,15 @@ class ControlPlaneSettingsController extends Controller
      * service, with the reason when not, so "the first build failed" becomes
      * "pizzasys: the Resource owner must be the organisation".
      */
-    public function testGithub(GitHub $github): JsonResponse
+    public function testGithub(GitHub $github, AccessCheck $check): JsonResponse
     {
         if (! $github->configured()) {
             return response()->json(['configured' => false, 'results' => []]);
         }
 
-        $results = Service::query()->orderBy('position')->orderBy('name')->get()->map(function (Service $service) use ($github) {
-            try {
-                $check = $github->checkRead($service->repo_full_name, $service->default_branch);
-            } catch (\Throwable $e) {
-                $check = ['ok' => false, 'problem' => 'error', 'message' => 'Could not reach GitHub: '.$e->getMessage()];
-            }
-
-            return [
-                'service' => $service->name,
-                'repository' => $service->repo_full_name,
-                'branch' => $service->default_branch,
-            ] + $check;
-        })->values();
+        $results = Service::query()->orderBy('position')->orderBy('name')->get()
+            ->map(fn (Service $service) => $check->service($service))
+            ->values();
 
         return response()->json(['configured' => true, 'results' => $results]);
     }
