@@ -38,6 +38,7 @@ class Service extends Model
         'health_path',
         'per_stack_build',
         'identity_provider',
+        'build_assets',
         'nats_publishes',
         'nats_consumes',
         'position',
@@ -51,6 +52,7 @@ class Service extends Model
         return [
             'per_stack_build' => 'boolean',
             'identity_provider' => 'boolean',
+            'build_assets' => 'boolean',
             'nats_publishes' => 'array',
             'nats_consumes' => 'array',
             'extra_databases' => 'array',

@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 export type ServiceCatalog = {
     auth_service_name: string | null;
     identity_provider: boolean;
+    build_assets: boolean;
     extra_databases: string[];
     processes: { name: string; command: string; port?: number | null; path?: string | null }[];
     first_run_commands: string[];
@@ -39,6 +40,7 @@ export function ServiceCatalogForm({
     const form = useForm({
         auth_service_name: catalog.auth_service_name ?? '',
         identity_provider: catalog.identity_provider,
+        build_assets: catalog.build_assets,
         extra_databases: catalog.extra_databases.join(', '),
         processes: catalog.processes.map((p) => ({
             name: p.name,
@@ -55,6 +57,7 @@ export function ServiceCatalogForm({
         form.transform((data) => ({
             auth_service_name: data.auth_service_name || null,
             identity_provider: data.identity_provider,
+            build_assets: data.build_assets,
             extra_databases: data.extra_databases
                 .split(',')
                 .map((d) => d.trim())
@@ -133,6 +136,20 @@ export function ServiceCatalogForm({
                             <p className="text-xs text-muted-foreground">
                                 Deployed first; registers every other service as
                                 a client and creates the first admin.
+                            </p>
+                            <label className="mt-1 flex items-center gap-2 text-sm">
+                                <Switch
+                                    disabled={!canManage}
+                                    checked={form.data.build_assets}
+                                    onCheckedChange={(v) =>
+                                        form.setData('build_assets', v)
+                                    }
+                                />
+                                Build the front end (Vite) into the image
+                            </label>
+                            <p className="text-xs text-muted-foreground">
+                                Off for a service that is an API only: a front
+                                end left in its repository is then never built.
                             </p>
                         </div>
                         <div className="grid gap-2">

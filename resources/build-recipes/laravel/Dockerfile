@@ -67,7 +67,9 @@ COPY --from=node:22-bookworm-slim /usr/local/lib/node_modules /usr/local/lib/nod
 RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
  && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 # Only services with a Vite front end build assets; the rest skip this.
-RUN if [ -f package-lock.json ] && ls vite.config.* >/dev/null 2>&1; then \
+# BUILD_ASSETS=0 comes from the service's catalog when it is an API only.
+ARG BUILD_ASSETS=1
+RUN if [ "$BUILD_ASSETS" = "1" ] && [ -f package-lock.json ] && ls vite.config.* >/dev/null 2>&1; then \
       npm ci --no-audit --no-fund && npm run build; \
     else \
       mkdir -p public; \

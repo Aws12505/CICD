@@ -63,6 +63,7 @@ class ServiceController extends Controller
                 'image_repository' => $service->imageRepository(),
                 'auth_service_name' => $service->auth_service_name,
                 'identity_provider' => $service->identity_provider,
+                'build_assets' => $service->build_assets,
                 'extra_databases' => $service->extra_databases ?? [],
                 'processes' => $service->processes ?? [],
                 'first_run_commands' => $service->first_run_commands ?? [],
@@ -143,6 +144,7 @@ class ServiceController extends Controller
         $data = $request->validate([
             'auth_service_name' => ['nullable', 'string', 'max:64'],
             'identity_provider' => ['boolean'],
+            'build_assets' => ['boolean'],
             'extra_databases' => ['array'],
             'extra_databases.*' => ['string', 'max:64', 'regex:/^[a-z0-9_]+$/'],
             'processes' => ['array'],
@@ -162,6 +164,7 @@ class ServiceController extends Controller
         $service->update([
             'auth_service_name' => $data['auth_service_name'] ?? null,
             'identity_provider' => (bool) ($data['identity_provider'] ?? false),
+            'build_assets' => (bool) ($data['build_assets'] ?? $service->build_assets),
             'extra_databases' => array_values($data['extra_databases'] ?? []),
             'processes' => array_values($data['processes'] ?? []),
             'first_run_commands' => array_values($data['first_run_commands'] ?? []),

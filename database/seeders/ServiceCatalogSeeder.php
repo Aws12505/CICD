@@ -224,6 +224,8 @@ class ServiceCatalogSeeder extends Seeder
                 // This repository calls its branches events / events_testing.
                 'default_branch' => 'events_testing',
                 'main_branch' => 'events',
+                // An API: the Inertia pages left in the repository are not served.
+                'build_assets' => false,
                 'subdomain' => 'qa',
                 'database_name' => 'auditapp',
                 'auth_service_name' => 'QA',
@@ -405,6 +407,7 @@ class ServiceCatalogSeeder extends Seeder
             'health_path' => '/up',
             'per_stack_build' => false,
             'identity_provider' => false,
+            'build_assets' => true,
             'extra_databases' => [],
             'first_run_commands' => [],
             'every_deploy_commands' => [],

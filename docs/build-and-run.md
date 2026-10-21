@@ -15,7 +15,7 @@ Three files take part:
 
 | File | What it does |
 |---|---|
-| `Dockerfile` | How the image is built. The default for a Laravel service installs PHP 8.4 with Apache and the extensions the services use, copies the repository in, runs `composer install --no-dev`, builds Vite assets in a stage that has both PHP and Node (Wayfinder runs `php artisan` during the build) and sets the entrypoint. Node never reaches the final image. The default for the Next.js dashboard is a three-stage build (deps → builder → runner) on `node:22-alpine` with `npm ci`, falling back to `npm install` because the repository carries two lockfiles. |
+| `Dockerfile` | How the image is built. The default for a Laravel service installs PHP 8.4 with Apache and the extensions the services use, copies the repository in, runs `composer install --no-dev`, builds Vite assets in a stage that has both PHP and Node (Wayfinder runs `php artisan` during the build) and sets the entrypoint. Node never reaches the final image. A service whose catalog has **Build the front end** off (an API only, such as QA) skips the asset step entirely. The default for the Next.js dashboard is a three-stage build (deps → builder → runner) on `node:22-alpine` with `npm ci`, falling back to `npm install` because the repository carries two lockfiles. |
 | `entrypoint.sh` (Laravel only) | What runs when a container starts. With no arguments it caches config and routes, links storage, and serves HTTP with Apache. Given a command, it runs that command as `www-data` instead. This one switch is how the same image is a web server or a worker. |
 | `.dockerignore` | What is left out of the build context (`.git`, `node_modules`, `vendor`, `storage`, `.env`…). |
 

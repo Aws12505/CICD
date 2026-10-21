@@ -140,6 +140,20 @@ test('every git call in the workspace trusts it, whoever owns the directory', fu
     expect($git->reject(fn ($l) => str_contains($l, "-c 'safe.directory=*' -C")))->toBeEmpty();
 });
 
+test('an API-only service builds without its front end', function () {
+    $api = Service::factory()->create(['slug' => 'qa', 'build_assets' => false]);
+    $web = Service::factory()->create(['slug' => 'hiring']);
+
+    $runner = scriptedRunner();
+    runBuild(builderWith($runner), $api, sha: null);
+    // A front end left in an API's repository can only fail the build.
+    expect($runner->transcript())->toContain("--build-arg 'BUILD_ASSETS=0'");
+
+    $runner = scriptedRunner();
+    runBuild(builderWith($runner), $web, sha: null);
+    expect($runner->transcript())->toContain("--build-arg 'BUILD_ASSETS=1'");
+});
+
 test('a branch that does not exist fails the build', function () {
     $service = Service::factory()->create();
 

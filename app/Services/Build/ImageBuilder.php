@@ -483,15 +483,20 @@ class ImageBuilder
     {
         $service = $build->service;
 
-        return implode(' ', [
+        return implode(' ', array_filter([
             'docker build --pull',
             '-f '.Shell::quote($this->dockerfilePath($service, $workspace)),
             '--label '.Shell::quote('org.opencontainers.image.revision='.$build->commit_sha),
             '--label '.Shell::quote('org.opencontainers.image.source=https://github.com/'.$service->repo_full_name),
             '--label '.Shell::quote('org.opencontainers.image.version='.$build->number),
+            // The Laravel recipe builds Vite assets only when asked: an API
+            // service never builds a front end it does not serve.
+            BuildFiles::recipeFor($service) === 'laravel'
+                ? '--build-arg '.Shell::quote('BUILD_ASSETS='.($service->build_assets ? '1' : '0'))
+                : '',
             '-t '.Shell::quote($reference),
             Shell::quote($workspace),
-        ]);
+        ]));
     }
 
     private function loginScript(): string
