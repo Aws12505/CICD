@@ -15,9 +15,25 @@ Three files take part:
 
 | File | What it does |
 |---|---|
-| `Dockerfile` | How the image is built. The default for a Laravel service installs PHP 8.4 with Apache and the extensions the services use, copies the repository in, runs `composer install --no-dev`, builds Vite assets in a stage that has both PHP and Node (Wayfinder runs `php artisan` during the build) and sets the entrypoint. Node never reaches the final image. A service whose catalog has **Build the front end** off (an API only, such as QA) skips the asset step entirely. The default for the Next.js dashboard is a three-stage build (deps → builder → runner) on `node:22-alpine` with `npm ci`, falling back to `npm install` because the repository carries two lockfiles. |
+| `Dockerfile` | How the image is built. The default for a Laravel service starts from the control plane's shared PHP base image (below), copies the repository in, runs `composer install --no-dev`, builds Vite assets in a stage that has both PHP and Node (Wayfinder runs `php artisan` during the build) and sets the entrypoint. Node never reaches the final image. A service whose catalog has **Build the front end** off (an API only, such as QA) skips the asset step entirely. The default for the Next.js dashboard is a three-stage build (deps → builder → runner) on `node:22-alpine` with `npm ci`, falling back to `npm install` because the repository carries two lockfiles. |
 | `entrypoint.sh` (Laravel only) | What runs when a container starts. With no arguments it caches config and routes, links storage, and serves HTTP with Apache. Given a command, it runs that command as `www-data` instead. This one switch is how the same image is a web server or a worker. |
 | `.dockerignore` | What is left out of the build context (`.git`, `node_modules`, `vendor`, `storage`, `.env`…). |
+
+### The shared PHP base image
+
+Compiling PHP's extensions takes minutes and is identical for every Laravel
+service, so it is done once. The control plane builds `php-base:<hash>` from
+`resources/build-recipes/laravel/base.Dockerfile`, pushes it to the registry,
+and every service's `Dockerfile` starts `FROM` it. A build checks the registry
+first (the **Checking the PHP base image** step) and only builds it when the
+tag is missing; the tag is a hash of the file, so it never changes under a
+service.
+
+To pick up a newer PHP (security releases), bump the `Base revision` line in
+that file and deploy the control plane: the next Laravel build makes the new
+base, once, and the services follow on their next builds. Services whose
+`Dockerfile` comes from their repository or is customised are not affected
+unless they start `FROM ${PHP_BASE}` (an `ARG PHP_BASE` the builder fills in).
 
 The dashboard is built once **per stack** because Next.js freezes its
 `NEXT_PUBLIC_*` values at build time. Its tag carries the stack id, never the
@@ -146,4 +162,6 @@ Open the build under **Builds**; its log streams and is kept.
 | `Dockerfile … not found` | The service's `Dockerfile` is set to a repository path that does not exist at that commit. Fix the path or reset to default. |
 | `composer install` fails on an extension | The default `Dockerfile` installs the extension set the services use today. A new extension goes into the service's `Dockerfile` (customise it) and the default here if every service needs it. |
 | `npm ci` fails on the dashboard | The lockfile does not match `package.json`. The default falls back to `npm install`; the real fix is one lockfile in the repository. |
+| `base:` step fails with `Could not download from "https://pecl.php.net/…" … 504` | PECL's server is down for a moment. The base build retries each download five times and keeps the compiled extensions, so **Build now** again a few minutes later continues quickly. |
+| The first Laravel build takes several minutes | It is making the shared PHP base image (see below). Once, then every Laravel service builds in seconds. |
 | `denied` on push | The registry push token lacks `write:packages`, or the registry username is not the token's owner. |

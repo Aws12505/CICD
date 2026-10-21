@@ -33,7 +33,7 @@ test('with no row a file is the recipe default', function () {
     $service = Service::factory()->create();
 
     expect(buildFiles()->source($service, 'Dockerfile'))->toBe(['source' => 'default', 'repo_path' => null]);
-    expect(buildFiles()->resolve($service, 'Dockerfile'))->toContain('FROM php:');
+    expect(buildFiles()->resolve($service, 'Dockerfile'))->toContain('FROM ${PHP_BASE}');
     expect(buildFiles()->resolve($service, 'compose.service.yml'))->toContain('image: {{image}}');
 });
 
@@ -49,7 +49,7 @@ test('a customised file replaces the default; a repository file is a path, not c
     expect(buildFiles()->resolve($service, '.dockerignore'))->toBeNull();
     expect(buildFiles()->source($service, '.dockerignore'))->toBe(['source' => 'repo', 'repo_path' => 'docker/.dockerignore']);
     // The default is still there to go back to.
-    expect(buildFiles()->defaultContents($service, 'Dockerfile'))->toContain('FROM php:');
+    expect(buildFiles()->defaultContents($service, 'Dockerfile'))->toContain('FROM ${PHP_BASE}');
 });
 
 /*

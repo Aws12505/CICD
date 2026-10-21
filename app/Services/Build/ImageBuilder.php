@@ -130,8 +130,15 @@ class ImageBuilder
 
             $task->step("Building {$reference}");
 
+            if (! $this->step($build, $task, 'login', $this->loginScript(), $this->registryEnv())) {
+                return $build;
+            }
+
+            if (BuildFiles::recipeFor($service) === 'laravel' && ! $this->ensurePhpBase($build, $task, $workspace)) {
+                return $build;
+            }
+
             $steps = [
-                'login' => [$this->loginScript(), $this->registryEnv()],
                 'build' => [$this->buildScript($build, $workspace, $reference), ['DOCKER_BUILDKIT' => '1']],
                 'push' => ['docker push '.Shell::quote($reference), []],
             ];
@@ -469,6 +476,30 @@ class ImageBuilder
         return implode("\n", $commands);
     }
 
+    /**
+     * Make the shared PHP base image if the registry does not have it yet.
+     *
+     * The first Laravel build after the base file changes pays the few minutes
+     * it takes to compile PHP's extensions; every build after that, of any
+     * service, finds it and moves on.
+     */
+    private function ensurePhpBase(Build $build, Task $task, string $workspace): bool
+    {
+        $task->step('Checking the PHP base image');
+
+        $found = $this->runner->run(new LocalTarget, PhpBase::existsScript(), timeout: 120);
+
+        if ($found->successful()) {
+            $task->log(PhpBase::reference()." is already built.\n");
+
+            return true;
+        }
+
+        $task->step('Building the PHP base image '.PhpBase::reference().' (once, a few minutes)');
+
+        return $this->step($build, $task, 'base', PhpBase::buildScript($workspace), ['DOCKER_BUILDKIT' => '1']);
+    }
+
     /** The Dockerfile to build with: the repository's, or the one written to .control-plane/. */
     private function dockerfilePath(Service $service, string $workspace): string
     {
@@ -483,17 +514,22 @@ class ImageBuilder
     {
         $service = $build->service;
 
+        $laravel = BuildFiles::recipeFor($service) === 'laravel';
+
         return implode(' ', array_filter([
-            'docker build --pull',
+            // A Laravel service starts from the shared base image, an immutable
+            // tag, so there is nothing newer to pull and no reason to ask the
+            // registry about it on every build. Other recipes track their
+            // upstream image.
+            $laravel ? 'docker build' : 'docker build --pull',
             '-f '.Shell::quote($this->dockerfilePath($service, $workspace)),
             '--label '.Shell::quote('org.opencontainers.image.revision='.$build->commit_sha),
             '--label '.Shell::quote('org.opencontainers.image.source=https://github.com/'.$service->repo_full_name),
             '--label '.Shell::quote('org.opencontainers.image.version='.$build->number),
             // The Laravel recipe builds Vite assets only when asked: an API
             // service never builds a front end it does not serve.
-            BuildFiles::recipeFor($service) === 'laravel'
-                ? '--build-arg '.Shell::quote('BUILD_ASSETS='.($service->build_assets ? '1' : '0'))
-                : '',
+            $laravel ? '--build-arg '.Shell::quote('BUILD_ASSETS='.($service->build_assets ? '1' : '0')) : '',
+            $laravel ? '--build-arg '.Shell::quote('PHP_BASE='.PhpBase::reference()) : '',
             '-t '.Shell::quote($reference),
             Shell::quote($workspace),
         ]));

@@ -12,6 +12,7 @@ use App\Models\Task;
 use App\Services\Build\BuildFiles;
 use App\Services\Build\ImageBuilder;
 use App\Services\Build\MigrationClassifier;
+use App\Services\Build\PhpBase;
 use App\Services\Remote\CommandResult;
 use App\Services\Stack\EnvResolver;
 use Database\Seeders\RoleSeeder;
@@ -154,6 +155,62 @@ test('an API-only service builds without its front end', function () {
     expect($runner->transcript())->toContain("--build-arg 'BUILD_ASSETS=1'");
 });
 
+test('a Laravel service builds on the shared PHP base and does not rebuild it when it exists', function () {
+    $runner = scriptedRunner();
+    runBuild(builderWith($runner), Service::factory()->create(['slug' => 'hiring']), sha: null);
+
+    $base = PhpBase::reference();
+    expect($base)->toStartWith('ghcr.io/rnd-experts-team/php-base:')->not->toContain('latest');
+
+    // The service starts FROM the base, which is an immutable tag: nothing to pull.
+    expect($runner->transcript())
+        ->toContain("--build-arg 'PHP_BASE={$base}'")
+        ->not->toContain('docker build --pull')
+        ->not->toContain('.control-plane/base.Dockerfile');
+});
+
+test('the first Laravel build makes the PHP base once, before the service build', function () {
+    $runner = scriptedRunner(['docker manifest inspect' => new CommandResult(1, '', 'manifest unknown', 1)]);
+    $build = runBuild(builderWith($runner), Service::factory()->create(['slug' => 'hiring']), sha: null);
+
+    $log = $runner->transcript();
+    $base = PhpBase::reference();
+
+    expect($build->status)->toBe('success');
+    expect($log)->toContain('docker build --pull -f')->toContain("-t '{$base}'")->toContain("docker push '{$base}'");
+    expect(strpos($log, '.control-plane/base.Dockerfile'))->toBeLessThan(strpos($log, "--build-arg 'PHP_BASE="));
+});
+
+test('a failed base build fails the build at that step', function () {
+    $runner = scriptedRunner([
+        'docker manifest inspect' => new CommandResult(1, '', 'manifest unknown', 1),
+        '.control-plane/base.Dockerfile' => new CommandResult(1, '', 'pecl: 504', 1),
+    ]);
+
+    $build = runBuild(builderWith($runner), Service::factory()->create(['slug' => 'hiring']), sha: null);
+
+    expect($build->status)->toBe('failed');
+    expect($build->error)->toContain('base:');
+    expect($runner->transcript())->not->toContain("--build-arg 'PHP_BASE=");
+});
+
+test('the PHP base tag follows its Dockerfile, so editing it makes a new base', function () {
+    expect(PhpBase::reference())->toBe(
+        'ghcr.io/rnd-experts-team/php-base:'.substr(sha1(PhpBase::contents()), 0, 12),
+    );
+    // Extensions compile here, once, not in every service's Dockerfile.
+    expect(PhpBase::contents())->toContain('docker-php-ext-install');
+    expect(app(BuildFiles::class)->defaultContents(Service::factory()->make(['build_recipe' => Service::RECIPE_LARAVEL_API]), BuildFiles::DOCKERFILE))
+        ->toContain('FROM ${PHP_BASE}')->not->toContain('docker-php-ext-install');
+});
+
+test('the Next.js recipe does not use the PHP base and still refreshes its image', function () {
+    $runner = scriptedRunner();
+    runBuild(builderWith($runner), Service::factory()->perStackBuild()->create(['slug' => 'dashboard', 'build_recipe' => Service::RECIPE_NEXTJS]), sha: null, stack: Stack::factory()->create());
+
+    expect($runner->transcript())->toContain('docker build --pull')->not->toContain('PHP_BASE')->not->toContain('manifest inspect');
+});
+
 test('a branch that does not exist fails the build', function () {
     $service = Service::factory()->create();
 
@@ -223,7 +280,7 @@ test('a repository without a Dockerfile builds with the control plane recipe', f
 
     expect($runner->transcript())
         ->toContain('/.control-plane/Dockerfile')
-        ->toContain('FROM php:8.4-apache')
+        ->toContain('FROM ${PHP_BASE}')
         ->toContain("-f '".storage_path('app/private/workspaces'));
 });
 
@@ -236,7 +293,7 @@ test('a repository Dockerfile overrides the recipe', function () {
     runBuild(builderWith($runner), $data);
 
     expect($runner->transcript())
-        ->not->toContain('FROM php:8.4-apache')
+        ->not->toContain('FROM ${PHP_BASE}')
         ->toContain('/workspaces/data/docker/Dockerfile.prod');
 });
 
