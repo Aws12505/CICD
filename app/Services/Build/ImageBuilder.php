@@ -191,7 +191,7 @@ class ImageBuilder
      */
     public function migrationsBetween(Service $service, ?string $fromSha, string $toSha): array
     {
-        $git = 'git -C '.Shell::quote($this->workspacePath($service));
+        $git = $this->gitIn($this->workspacePath($service));
 
         $listed = $this->runner->run(
             new LocalTarget,
@@ -281,7 +281,7 @@ class ImageBuilder
     {
         $result = $this->runner->run(
             new LocalTarget,
-            'git -C '.Shell::quote($this->workspacePath($service))
+            $this->gitIn($this->workspacePath($service))
                 ." log --format='%h%x09%an%x09%s' -n 50 "
                 .($fromSha === null ? Shell::quote($toSha).' -n 1' : Shell::quote($fromSha).'..'.Shell::quote($toSha)),
             timeout: 60,
@@ -311,11 +311,25 @@ class ImageBuilder
             : Shell::quote($fromSha).'..'.Shell::quote($toSha);
     }
 
+    /**
+     * `git -C <workspace>` that trusts the workspace whoever owns it.
+     *
+     * The web container and the queue worker can run as different users (and a
+     * workspace cloned before an update keeps its old owner), and git refuses a
+     * repository owned by someone else ("dubious ownership"). The workspace is
+     * the control plane's own clone, so it is safe to trust; on the command line
+     * this is honoured, and nothing is written to any git config.
+     */
+    private function gitIn(string $workspace): string
+    {
+        return 'git -c '.Shell::quote('safe.directory=*').' -C '.Shell::quote($workspace);
+    }
+
     private function headOf(string $workspace, string $branch): ?string
     {
         $result = $this->runner->run(
             new LocalTarget,
-            'git -C '.Shell::quote($workspace).' rev-parse --verify '.Shell::quote('refs/remotes/origin/'.$branch.'^{commit}'),
+            $this->gitIn($workspace).' rev-parse --verify '.Shell::quote('refs/remotes/origin/'.$branch.'^{commit}'),
             timeout: 30,
         );
 
@@ -385,7 +399,7 @@ class ImageBuilder
     private function fetchScript(Service $service, string $workspace): string
     {
         $repo = 'https://github.com/'.$service->repo_full_name.'.git';
-        $git = 'git -C '.Shell::quote($workspace);
+        $git = $this->gitIn($workspace);
 
         return implode("\n", [
             'set -e',
@@ -400,7 +414,7 @@ class ImageBuilder
 
     private function checkoutScript(string $workspace, string $sha): string
     {
-        $git = 'git -C '.Shell::quote($workspace);
+        $git = $this->gitIn($workspace);
 
         return implode("\n", [
             'set -e',

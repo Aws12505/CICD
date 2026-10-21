@@ -124,6 +124,22 @@ test('build now resolves the branch head after fetching, then checks out that ex
     expect($runner->transcript())->toContain("checkout --force '".HEAD."'");
 });
 
+test('every git call in the workspace trusts it, whoever owns the directory', function () {
+    $service = Service::factory()->create(['slug' => 'hiring']);
+    $runner = scriptedRunner();
+
+    runBuild(builderWith($runner), $service, sha: null);
+
+    // The web container and the queue worker can run as different users, and a
+    // clone made before an update keeps its old owner. Without this git stops
+    // with "detected dubious ownership" and the build never starts.
+    $git = collect(explode('
+', $runner->transcript()))->filter(fn ($l) => str_contains($l, 'git ') && str_contains($l, ' -C '));
+
+    expect($git)->not->toBeEmpty();
+    expect($git->reject(fn ($l) => str_contains($l, "-c 'safe.directory=*' -C")))->toBeEmpty();
+});
+
 test('a branch that does not exist fails the build', function () {
     $service = Service::factory()->create();
 
