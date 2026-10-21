@@ -63,12 +63,25 @@ class DriftPoller
         $observations = [];
 
         foreach ($entitlements as $entitlement) {
-            $observed = $running[$entitlement->containerName()] ?? null;
             $expected = $entitlement->desired_digest;
 
             if (blank($expected)) {
                 // Never deployed. Nothing to compare against yet.
                 continue;
+            }
+
+            // The web container and every process container run the same
+            // image; the first one that differs (or is missing) is the drift.
+            $observed = $running[$entitlement->containerName()] ?? null;
+
+            foreach ($entitlement->service->processList() as $process) {
+                $name = $entitlement->processContainerName($process['name']);
+
+                if (($running[$name] ?? null) !== $expected) {
+                    $observed = $running[$name] ?? null;
+
+                    break;
+                }
             }
 
             if ($observed === $expected) {
@@ -133,9 +146,17 @@ class DriftPoller
     }
 
     /**
-     * Container name => image digest, for everything in this compose project.
+     * Container name => the digest it was started from, for everything in
+     * this compose project.
      *
-     * @return array<string, string>|null null when the server is unreachable
+     * `Config.Image` is the exact reference compose put in the create request
+     * (`repo@sha256:…` from our file), so its digest part is what we pinned.
+     * `.Image` is the local image ID, a different hash entirely: comparing
+     * that with the registry digest would report every deploy as drift. A
+     * container someone started by hand with a tag has no `@` and is
+     * reported as drift, which is right.
+     *
+     * @return array<string, string|null>|null null when the server is unreachable
      */
     private function runningDigests(Stack $stack, Target $target): ?array
     {
@@ -143,7 +164,7 @@ class DriftPoller
             $target,
             'docker ps --all --filter '.Shell::quote('label=com.docker.compose.project='.$stack->compose_project)
                 .' --format '.Shell::quote('{{.Names}}')
-                .' | xargs -r docker inspect --format '.Shell::quote('{{.Name}} {{.Image}}'),
+                .' | xargs -r docker inspect --format '.Shell::quote('{{.Name}} {{.Config.Image}} {{.Image}}'),
             timeout: 60,
         );
 
@@ -160,7 +181,10 @@ class DriftPoller
                 continue;
             }
 
-            $digests[ltrim($parts[0], '/')] = $parts[1];
+            $reference = $parts[1];
+            $digests[ltrim($parts[0], '/')] = str_contains($reference, '@')
+                ? substr($reference, strpos($reference, '@') + 1)
+                : $reference;
         }
 
         return $digests;

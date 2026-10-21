@@ -12,7 +12,7 @@ export type ServiceCatalog = {
     auth_service_name: string | null;
     identity_provider: boolean;
     extra_databases: string[];
-    processes: { name: string; command: string }[];
+    processes: { name: string; command: string; port?: number | null; path?: string | null }[];
     first_run_commands: string[];
     every_deploy_commands: string[];
 };
@@ -40,9 +40,12 @@ export function ServiceCatalogForm({
         auth_service_name: catalog.auth_service_name ?? '',
         identity_provider: catalog.identity_provider,
         extra_databases: catalog.extra_databases.join(', '),
-        processes: catalog.processes
-            .map((p) => `${p.name}: ${p.command}`)
-            .join('\n'),
+        processes: catalog.processes.map((p) => ({
+            name: p.name,
+            command: p.command,
+            port: p.port ? String(p.port) : '',
+            path: p.path ?? '',
+        })),
         first_run_commands: catalog.first_run_commands.join('\n'),
         every_deploy_commands: catalog.every_deploy_commands.join('\n'),
     });
@@ -56,21 +59,31 @@ export function ServiceCatalogForm({
                 .split(',')
                 .map((d) => d.trim())
                 .filter(Boolean),
-            processes: lines(data.processes).map((line) => {
-                const at = line.indexOf(':');
-
-                return at === -1
-                    ? { name: line, command: '' }
-                    : {
-                          name: line.slice(0, at).trim(),
-                          command: line.slice(at + 1).trim(),
-                      };
-            }),
+            processes: data.processes
+                .filter((p) => p.name.trim() !== '' || p.command.trim() !== '')
+                .map((p) => ({
+                    name: p.name.trim(),
+                    command: p.command.trim(),
+                    port: p.port.trim() === '' ? null : Number(p.port),
+                    path: p.path.trim() === '' ? null : p.path.trim(),
+                })),
             first_run_commands: lines(data.first_run_commands),
             every_deploy_commands: lines(data.every_deploy_commands),
         }));
         form.put(`/services/${slug}/catalog`, { preserveScroll: true });
     };
+
+    const setProcess = (
+        index: number,
+        field: 'name' | 'command' | 'port' | 'path',
+        value: string,
+    ) =>
+        form.setData(
+            'processes',
+            form.data.processes.map((p, i) =>
+                i === index ? { ...p, [field]: value } : p,
+            ),
+        );
 
     const errorFor = (prefix: string) =>
         Object.entries(form.errors).find(([k]) => k.startsWith(prefix))?.[1];
@@ -148,26 +161,105 @@ export function ServiceCatalogForm({
                     </div>
 
                     <div className="grid gap-2">
-                        <Label htmlFor="processes">
-                            Processes beside the web container
-                        </Label>
-                        <Textarea
-                            id="processes"
-                            rows={4}
-                            className="font-mono text-xs"
-                            disabled={!canManage}
-                            value={form.data.processes}
-                            onChange={(e) =>
-                                form.setData('processes', e.target.value)
-                            }
-                            placeholder={
-                                'queue: php artisan queue:work --queue=humanity,default\nscheduler: php artisan schedule:work\nnats: php artisan nats:consume'
-                            }
-                        />
+                        <Label>Processes beside the web container</Label>
                         <p className="text-xs text-muted-foreground">
-                            One per line, as name: command. Each runs in its own
-                            container from the same image.
+                            This is the supervisord.conf of the old setup: one
+                            line per program, and each becomes its own
+                            container from the same image. Port and path are
+                            only for one that listens (Reverb: 8080 and /app).
                         </p>
+                        <div className="grid gap-2">
+                            {form.data.processes.map((p, i) => (
+                                <div
+                                    key={i}
+                                    className="grid gap-2 sm:grid-cols-[8rem_1fr_5rem_6rem_auto]"
+                                >
+                                    <Input
+                                        aria-label="Process name"
+                                        className="font-mono"
+                                        placeholder="queue"
+                                        disabled={!canManage}
+                                        value={p.name}
+                                        onChange={(e) =>
+                                            setProcess(i, 'name', e.target.value)
+                                        }
+                                    />
+                                    <Input
+                                        aria-label="Command"
+                                        className="font-mono"
+                                        placeholder="php artisan queue:work --sleep=3 --tries=1"
+                                        disabled={!canManage}
+                                        value={p.command}
+                                        onChange={(e) =>
+                                            setProcess(
+                                                i,
+                                                'command',
+                                                e.target.value,
+                                            )
+                                        }
+                                    />
+                                    <Input
+                                        aria-label="Port"
+                                        className="font-mono"
+                                        placeholder="port"
+                                        disabled={!canManage}
+                                        value={p.port}
+                                        onChange={(e) =>
+                                            setProcess(i, 'port', e.target.value)
+                                        }
+                                    />
+                                    <Input
+                                        aria-label="Path"
+                                        className="font-mono"
+                                        placeholder="/path"
+                                        disabled={!canManage}
+                                        value={p.path}
+                                        onChange={(e) =>
+                                            setProcess(i, 'path', e.target.value)
+                                        }
+                                    />
+                                    {canManage && (
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() =>
+                                                form.setData(
+                                                    'processes',
+                                                    form.data.processes.filter(
+                                                        (_, j) => j !== i,
+                                                    ),
+                                                )
+                                            }
+                                        >
+                                            Remove
+                                        </Button>
+                                    )}
+                                </div>
+                            ))}
+                            {canManage && (
+                                <div>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                            form.setData('processes', [
+                                                ...form.data.processes,
+                                                {
+                                                    name: '',
+                                                    command: '',
+                                                    port: '',
+                                                    path: '',
+                                                },
+                                            ])
+                                        }
+                                    >
+                                        Add a process
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
                         <InputError message={errorFor('processes')} />
                     </div>
 

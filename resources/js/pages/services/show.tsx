@@ -4,6 +4,8 @@ import type { FormEventHandler } from 'react';
 import InputError from '@/components/input-error';
 import { ServiceCatalogForm } from '@/components/service-catalog-form';
 import type { ServiceCatalog } from '@/components/service-catalog-form';
+import { ServiceFilesCard } from '@/components/service-files-card';
+import type { ServiceFileRow } from '@/components/service-files-card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,7 +27,6 @@ type ServiceDetail = ServiceRow &
         repo_full_name: string;
         default_branch: string;
         main_branch: string;
-        dockerfile_path: string | null;
         database_name: string | null;
         health_path: string;
         image_repository: string;
@@ -36,6 +37,7 @@ type Props = {
     definitions: EnvDefinition[];
     sources: Record<string, string>;
     editions: { name: string; clients: string[] }[];
+    files: ServiceFileRow[];
 };
 
 export default function ServiceShow({
@@ -43,6 +45,7 @@ export default function ServiceShow({
     definitions,
     sources,
     editions,
+    files,
 }: Props) {
     const { manage: canManage } = useAbilities();
 
@@ -91,6 +94,8 @@ export default function ServiceShow({
                     catalog={service}
                     canManage={canManage}
                 />
+
+                <ServiceFilesCard slug={service.slug} files={files} />
 
                 {editions.length > 0 && (
                     <Card>

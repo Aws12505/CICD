@@ -19,8 +19,6 @@ class Service extends Model
 
     public const RECIPE_LARAVEL_API = 'laravel-api';
 
-    public const RECIPE_LARAVEL_WORKER = 'laravel-worker';
-
     public const RECIPE_NEXTJS = 'nextjs';
 
     protected $fillable = [
@@ -30,7 +28,6 @@ class Service extends Model
         'default_branch',
         'main_branch',
         'build_recipe',
-        'dockerfile_path',
         'subdomain',
         'database_name',
         'auth_service_name',
@@ -74,27 +71,26 @@ class Service extends Model
         return $this->hasMany(StackService::class);
     }
 
-    public function runsAWorker(): bool
+    /** Build and run files this service overrides (decision 27). */
+    public function files(): HasMany
     {
-        return $this->build_recipe === self::RECIPE_LARAVEL_WORKER;
+        return $this->hasMany(ServiceFile::class);
     }
 
     /**
-     * Containers beside the web one, each from the same image.
-     *
-     * From the catalog's `processes` when set. A `laravel-worker` service
-     * without them keeps the single supervisord worker its image starts
-     * with the "worker" argument.
+     * Containers beside the web one, each from the same image with its own
+     * command: the catalog's `processes`. This is the supervisord.conf of the
+     * old setup, one container per program.
      *
      * A process may also listen: `port` is the container port and `path` the
      * URL prefix nginx routes to it on the service's domain (Reverb: 8080
      * and /app).
      *
-     * @return list<array{name: string, command: string|null, port: int|null, path: string|null}>
+     * @return list<array{name: string, command: string, port: int|null, path: string|null}>
      */
     public function processList(): array
     {
-        $processes = collect($this->processes ?? [])
+        return collect($this->processes ?? [])
             ->filter(fn ($p) => filled($p['name'] ?? null) && filled($p['command'] ?? null))
             ->map(fn ($p) => [
                 'name' => (string) $p['name'],
@@ -104,12 +100,6 @@ class Service extends Model
             ])
             ->values()
             ->all();
-
-        if ($processes === [] && $this->runsAWorker()) {
-            return [['name' => 'worker', 'command' => null, 'port' => null, 'path' => null]];
-        }
-
-        return $processes;
     }
 
     /**

@@ -4,6 +4,7 @@ namespace App\Services\Build;
 
 use App\Models\Build;
 use App\Models\Service;
+use App\Models\ServiceFile;
 use App\Models\Setting;
 use App\Models\Stack;
 use App\Models\Task;
@@ -36,6 +37,7 @@ class ImageBuilder
         private readonly CommandRunner $runner,
         private readonly MigrationClassifier $classifier,
         private readonly EnvResolver $env,
+        private readonly BuildFiles $files,
     ) {}
 
     /**
@@ -76,7 +78,7 @@ class ImageBuilder
      */
     public function run(Build $build, Task $task): Build
     {
-        $build->loadMissing('service', 'stack');
+        $build->loadMissing('service.files', 'stack');
         $service = $build->service;
         $workspace = $this->workspacePath($service);
         $local = new LocalTarget;
@@ -217,12 +219,6 @@ class ImageBuilder
     public function workspacePath(Service $service): string
     {
         return storage_path('app/private/workspaces/'.$service->slug);
-    }
-
-    /** The recipe folder used when the repository has no Dockerfile. */
-    public static function recipeFor(Service $service): string
-    {
-        return $service->build_recipe === Service::RECIPE_NEXTJS ? 'nextjs' : 'laravel';
     }
 
     /**
@@ -416,27 +412,31 @@ class ImageBuilder
     }
 
     /**
-     * The control plane's Dockerfile when the repository has none, a
-     * .dockerignore when it has none, and for a per-stack build that stack's
-     * build-time values.
+     * The service's build files (decision 27) into the checkout, and for a
+     * per-stack build that stack's build-time values.
+     *
+     * Dockerfile and entrypoint go to .control-plane/ unless the service
+     * takes them from its repository. The .dockerignore replaces the
+     * repository's when it is the control plane's (default or custom); a
+     * repository-sourced one is left alone.
      */
     private function contextScript(Build $build, string $workspace): string
     {
         $service = $build->service;
         $commands = ['set -e'];
 
-        if (! $this->usesOwnDockerfile($service)) {
-            $recipe = resource_path('build-recipes/'.self::recipeFor($service));
+        foreach ([BuildFiles::DOCKERFILE, BuildFiles::ENTRYPOINT] as $name) {
+            $contents = $this->files->resolve($service, $name);
 
-            foreach (['Dockerfile', 'entrypoint.sh', 'supervisord.conf'] as $file) {
-                if (is_file($recipe.'/'.$file)) {
-                    $commands[] = RemoteFiles::write($workspace.'/.control-plane/'.$file, (string) file_get_contents($recipe.'/'.$file), '644');
-                }
+            if ($contents !== null) {
+                $commands[] = RemoteFiles::write($workspace.'/.control-plane/'.$name, $contents, '644');
             }
+        }
 
-            if (is_file($recipe.'/dockerignore')) {
-                $commands[] = RemoteFiles::writeIfMissing($workspace.'/.dockerignore', (string) file_get_contents($recipe.'/dockerignore'), '644');
-            }
+        $ignore = $this->files->resolve($service, BuildFiles::DOCKERIGNORE);
+
+        if ($ignore !== null) {
+            $commands[] = RemoteFiles::write($workspace.'/.dockerignore', $ignore, '644');
         }
 
         if ($build->stack_id !== null) {
@@ -455,22 +455,23 @@ class ImageBuilder
         return implode("\n", $commands);
     }
 
-    private function usesOwnDockerfile(Service $service): bool
+    /** The Dockerfile to build with: the repository's, or the one written to .control-plane/. */
+    private function dockerfilePath(Service $service, string $workspace): string
     {
-        return filled($service->dockerfile_path);
+        $source = $this->files->source($service, BuildFiles::DOCKERFILE);
+
+        return $source['source'] === ServiceFile::SOURCE_REPO
+            ? $workspace.'/'.ltrim((string) $source['repo_path'], '/')
+            : $workspace.'/.control-plane/'.BuildFiles::DOCKERFILE;
     }
 
     private function buildScript(Build $build, string $workspace, string $reference): string
     {
         $service = $build->service;
 
-        $dockerfile = $this->usesOwnDockerfile($service)
-            ? $workspace.'/'.ltrim($service->dockerfile_path, '/')
-            : $workspace.'/.control-plane/Dockerfile';
-
         return implode(' ', [
             'docker build --pull',
-            '-f '.Shell::quote($dockerfile),
+            '-f '.Shell::quote($this->dockerfilePath($service, $workspace)),
             '--label '.Shell::quote('org.opencontainers.image.revision='.$build->commit_sha),
             '--label '.Shell::quote('org.opencontainers.image.source=https://github.com/'.$service->repo_full_name),
             '--label '.Shell::quote('org.opencontainers.image.version='.$build->number),

@@ -2,8 +2,8 @@
 # Control-plane entrypoint for a Laravel image.
 #
 #   (no arguments)   serve HTTP with apache
-#   worker           the legacy supervisord set: scheduler, queue, NATS
 #   anything else    run it as www-data, e.g. `sh -c "php artisan queue:work"`
+#                    (every process in the catalog starts this way)
 set -e
 
 cd /var/www/html
@@ -31,11 +31,6 @@ fi
 
 if [ "$#" -eq 0 ]; then
   exec apache2-foreground
-fi
-
-if [ "$1" = "worker" ]; then
-  mkdir -p /run/supervisor /var/log/supervisor
-  exec /usr/bin/supervisord -n -c /etc/supervisor/supervisord.conf
 fi
 
 exec runuser -u www-data -- "$@"

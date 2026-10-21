@@ -7,6 +7,7 @@ use App\Models\ServiceEnvDefinition;
 use App\Models\Stack;
 use App\Models\StackEnvValue;
 use App\Models\StackService;
+use App\Services\Build\BuildFiles;
 use App\Services\Stack\StackRenderer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -78,15 +79,33 @@ test('persistent data is a host bind path, not a named volume', function () {
         ->toContain('/srv/acme_live/storage/hiring:/var/www/html/storage/app');
 });
 
-test('a worker recipe gets a second container from the same image', function () {
+test('each process gets its own container from the same image', function () {
     $stack = renderableStack();
-    enable($stack, ['build_recipe' => Service::RECIPE_LARAVEL_WORKER]);
+    enable($stack, ['processes' => [['name' => 'queue', 'command' => 'php artisan queue:work']]]);
 
     $compose = app(StackRenderer::class)->compose($stack);
 
-    expect($compose)->toContain('container_name: acme_live_hiring_worker');
-    // Same image: the worker is the same code with a different entrypoint.
+    expect($compose)->toContain('container_name: acme_live_hiring_queue');
+    // Same image: a process is the same code with a different command.
     expect(substr_count($compose, 'ghcr.io/rnd-experts-team/hiring'))->toBe(2);
+});
+
+test('a customised template changes what every stack of that service gets', function () {
+    $stack = renderableStack();
+    $entitlement = enable($stack, ['processes' => [['name' => 'queue', 'command' => 'php artisan queue:work']]]);
+    $files = app(BuildFiles::class);
+
+    $entitlement->service->files()->create([
+        'name' => 'compose.process.yml',
+        'source' => 'custom',
+        'contents' => str_replace('    restart: unless-stopped', "    restart: unless-stopped\n    stop_grace_period: 60s", $files->defaultContents($entitlement->service, 'compose.process.yml')),
+    ]);
+
+    $compose = app(StackRenderer::class)->compose($stack);
+
+    // Only the process block changed; the web container keeps the default.
+    expect(substr_count($compose, 'stop_grace_period: 60s'))->toBe(1);
+    expect($compose)->toContain('container_name: acme_live_hiring_queue');
 });
 
 test('only enabled services are rendered', function () {

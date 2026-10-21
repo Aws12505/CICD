@@ -1,0 +1,12 @@
+  {{slug}}_{{name}}:
+    image: {{image}}
+    container_name: {{container}}
+    command: {{command}}
+    {{ports_block}}
+    env_file:
+      - {{env_file}}
+    volumes:
+      - "{{storage_host}}:{{storage_container}}"
+    restart: unless-stopped
+    networks:
+      - {{network}}

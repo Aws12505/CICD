@@ -469,15 +469,21 @@ class ReleaseRunner
                 continue;
             }
 
-            $conf = $this->renderer->nginx($entitlement, maintenance: true);
             $domain = $release->stack->domainFor($item->service);
-            $path = $this->renderer->rootPath($release->stack)."/nginx/{$domain}.conf";
+            $base = $this->renderer->rootPath($release->stack)."/nginx/{$domain}";
 
-            $this->runner->run(
-                $target,
-                "printf '%s' '".base64_encode($conf)."' | base64 -d > ".Shell::quote($path),
-                timeout: 30,
-            );
+            // Both variants: a domain without a certificate yet is linked to
+            // the plain one, and the TLS block would not even load there.
+            foreach ([
+                '.conf' => $this->renderer->nginx($entitlement, maintenance: true),
+                '.http' => $this->renderer->nginxHttpOnly($entitlement, maintenance: true),
+            ] as $suffix => $conf) {
+                $this->runner->run(
+                    $target,
+                    "printf '%s' '".base64_encode($conf)."' | base64 -d > ".Shell::quote($base.$suffix),
+                    timeout: 30,
+                );
+            }
         }
 
         $this->sync->reloadNginx($release->stack, $target);

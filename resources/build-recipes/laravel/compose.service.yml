@@ -1,0 +1,12 @@
+  {{slug}}:
+    image: {{image}}
+    container_name: {{container}}
+    env_file:
+      - {{env_file}}
+    ports:
+      - "127.0.0.1:{{host_port}}:{{container_port}}"
+    volumes:
+      - "{{storage_host}}:{{storage_container}}"
+    restart: unless-stopped
+    networks:
+      - {{network}}

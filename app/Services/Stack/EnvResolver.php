@@ -173,6 +173,8 @@ class EnvResolver
 
         // "container:reverb" — the name of one of this service's process
         // containers, for the service to reach it on the Docker network.
+        // Same rule as StackService::processContainerName(), inline because
+        // this resolver works from the stack and service alone.
         if (str_starts_with($property, 'container:')) {
             return $stack->compose_project.'_'.$service->slug.'_'.substr($property, 10);
         }

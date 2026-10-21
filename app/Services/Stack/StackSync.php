@@ -3,10 +3,13 @@
 namespace App\Services\Stack;
 
 use App\Contracts\Target;
+use App\Models\Service;
 use App\Models\Stack;
+use App\Models\StackService;
 use App\Services\Remote\CommandResult;
 use App\Services\Remote\CommandRunner;
 use App\Support\Shell;
+use Illuminate\Support\Collection;
 use RuntimeException;
 
 /**
@@ -87,16 +90,32 @@ class StackSync
     private function prepareScript(Stack $stack, string $root): string
     {
         $dirs = [$root, $root.'/env', $root.'/nginx', $root.'/storage'];
+        $chown = [];
 
-        foreach ($this->renderer->files($stack) as $path => $ignored) {
-            if (str_starts_with($path, 'env/')) {
-                $dirs[] = $root.'/storage/'.basename($path, '.env');
-            }
+        foreach ($this->enabled($stack) as $entitlement) {
+            $dir = $root.'/storage/'.$entitlement->service->slug;
+            $dirs[] = $dir;
+            // Created here as root over SSH, but written to by the image's
+            // own user: www-data (33) for Laravel, the nextjs user (1001).
+            $uid = $entitlement->service->build_recipe === Service::RECIPE_NEXTJS ? 1001 : 33;
+            $chown[] = "chown {$uid}:{$uid} ".Shell::quote($dir);
         }
 
         $quoted = implode(' ', array_map(fn (string $d) => Shell::quote($d), array_unique($dirs)));
 
-        return "set -e\nmkdir -p {$quoted}\nchmod 700 ".Shell::quote($root.'/env');
+        return implode("\n", ['set -e', "mkdir -p {$quoted}", ...$chown, 'chmod 700 '.Shell::quote($root.'/env')]);
+    }
+
+    /**
+     * @return Collection<int, StackService>
+     */
+    private function enabled(Stack $stack)
+    {
+        return StackService::query()
+            ->with('service')
+            ->where('stack_id', $stack->id)
+            ->where('enabled', true)
+            ->get();
     }
 
     /**

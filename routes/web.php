@@ -14,6 +14,7 @@ use App\Http\Controllers\RunController;
 use App\Http\Controllers\ServerController;
 use App\Http\Controllers\ServerOpsController;
 use App\Http\Controllers\ServiceController;
+use App\Http\Controllers\ServiceFileController;
 use App\Http\Controllers\StackBackupController;
 use App\Http\Controllers\StackPlanController;
 use App\Http\Controllers\SystemController;
@@ -98,6 +99,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('clients/{client}', [ClientController::class, 'show'])->name('clients.show');
     Route::get('services/{service}', [ServiceController::class, 'show'])->name('services.show');
+    // Build & run files: readable by anyone signed in, like the service.
+    Route::get('services/{service}/files/preview/{stack}', [ServiceFileController::class, 'preview'])->name('services.files.preview');
+    Route::get('services/{service}/files/{name}', [ServiceFileController::class, 'show'])->name('services.files.show');
 
     Route::middleware('role:admin|operator')->group(function () {
         Route::match(['put', 'patch'], 'clients/{client}', [ClientController::class, 'update'])->name('clients.update');
@@ -112,6 +116,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::match(['put', 'patch'], 'services/{service}', [ServiceController::class, 'update'])->name('services.update');
         Route::put('services/{service}/catalog', [ServiceController::class, 'updateCatalog'])->name('services.catalog.update');
+        Route::put('services/{service}/files/{name}', [ServiceFileController::class, 'update'])->name('services.files.update');
         Route::post('services/{service}/editions/{edition}/sync', [EditionController::class, 'sync'])->name('services.editions.sync');
         Route::post('services/{service}/env', [ServiceController::class, 'storeDefinition'])->name('services.env.store');
         Route::delete('services/{service}/env/{definition}', [ServiceController::class, 'destroyDefinition'])->name('services.env.destroy');

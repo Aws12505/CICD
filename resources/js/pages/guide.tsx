@@ -354,6 +354,60 @@ const HOW_TOS: HowTo[] = [
         ],
     },
     {
+        id: 'build-files',
+        title: 'Change how a service is built or run',
+        summary:
+            'Dockerfile, entrypoint, compose blocks and the nginx vhost, per service, each with a default that works.',
+        steps: [
+            <>
+                Open the service under{' '}
+                <Link href="/services" className="underline">
+                    Services
+                </Link>{' '}
+                → <b>Build &amp; run files</b>. Six files, each with a pill:{' '}
+                <b>default</b> (the control plane's copy), <b>customised</b>{' '}
+                (edited here) or <b>from repository</b> (a path in the
+                service's own repository).
+            </>,
+            <>
+                To change one, open it, edit, <b>Save</b>. The build files (
+                <Code>Dockerfile</Code>, <Code>entrypoint.sh</Code>,{' '}
+                <Code>.dockerignore</Code>) take effect on the next <b>Build</b>
+                ; the compose blocks and <Code>nginx.conf</Code> on the next
+                deploy or <b>Apply</b> of each stack.
+            </>,
+            <>
+                If the repository has its own Dockerfile, choose <b>Use a file
+                in the repository</b> and give its path. The control plane's
+                entrypoint is then not copied, so that file is marked as not
+                used.
+            </>,
+            <>
+                The compose and nginx files are templates:{' '}
+                <Code>{'{{slug}}'}</Code>, <Code>{'{{image}}'}</Code> and the
+                rest are filled per stack. <b>Preview on a stack</b> shows the
+                finished docker-compose.yml and vhost before anything is
+                deployed. A template with an unknown placeholder is refused
+                when you save, with the list of allowed ones.
+            </>,
+            <>
+                <b>Workers</b> are the <b>Processes</b> table on the same page:
+                the supervisord.conf of the old setup. Each line (queue,
+                scheduler, nats, reverb…) becomes its own container from the
+                same image, so a crashed worker is a stopped container you can
+                see, not a process hidden inside another. Operations' Humanity
+                worker is its queue line with{' '}
+                <Code>--queue=humanity,default</Code>.
+            </>,
+            <>
+                <b>Reset to default</b> puts a file back. The defaults live in
+                the repository under <Code>resources/build-recipes/</Code> and
+                are explained in <Code>docs/build-and-run.md</Code>.
+            </>,
+        ],
+        note: 'Nothing on a client server is built from source: images are built here once and pulled by digest. A compose file there never has a build: line, and the server never holds a git credential.',
+    },
+    {
         id: 'server',
         title: 'Add and set up a client server',
         summary:
@@ -781,7 +835,8 @@ export default function Guide() {
                         </h2>
                         <p className="text-sm text-muted-foreground">
                             Exactly where to click, on GitHub, at the registrar
-                            and here.
+                            and here. The same steps, readable without the app,
+                            are in the repository under <Code>docs/</Code>.
                         </p>
                     </div>
                     <div className="grid gap-3">

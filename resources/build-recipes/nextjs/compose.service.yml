@@ -1,0 +1,24 @@
+  {{slug}}:
+    image: {{image}}
+    container_name: {{container}}
+    env_file:
+      - {{env_file}}
+    environment:
+      NODE_ENV: production
+      PORT: "{{container_port}}"
+      HOSTNAME: 0.0.0.0
+      NEXT_TELEMETRY_DISABLED: "1"
+    ports:
+      - "127.0.0.1:{{host_port}}:{{container_port}}"
+    volumes:
+      - "{{storage_host}}:{{storage_container}}"
+    restart: unless-stopped
+    init: true
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:{{container_port}}/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - {{network}}

@@ -158,3 +158,40 @@ test('adopt accepts what is running, because sometimes the field fix was right',
     expect($observation->fresh()->resolution_reason)->toContain('Hotfix');
     expect($observation->fresh()->resolved_by)->not->toBeNull();
 });
+
+test('the digest is read from the reference compose started the container with, not the local image id', function () {
+    $stack = driftStack();
+    deployed($stack, 'hiring', 'sha256:expected');
+
+    // `{{.Config.Image}}` is the `repo@sha256:…` the compose file named, kept
+    // verbatim; `{{.Image}}` is the daemon's local ID, which never equals a
+    // registry digest. Comparing the latter would call every deploy drift.
+    $running = "/acme_live_hiring ghcr.io/rnd-experts-team/hiring@sha256:expected sha256:0123456789abcdef\n";
+
+    expect(pollerReturning($running)->poll($stack, new NullTarget))->toBeEmpty();
+});
+
+test('a process container that is missing is drift even when the web container is right', function () {
+    $stack = driftStack();
+    $service = Service::factory()->create([
+        'slug' => 'hiring',
+        'subdomain' => 'hiring',
+        'processes' => [['name' => 'queue', 'command' => 'php artisan queue:work']],
+    ]);
+    StackService::create([
+        'stack_id' => $stack->id, 'service_id' => $service->id, 'enabled' => true,
+        'desired_digest' => 'sha256:expected', 'current_digest' => 'sha256:expected', 'state' => 'deployed',
+    ]);
+
+    $web = "/acme_live_hiring ghcr.io/x/hiring@sha256:expected sha256:local\n";
+    $queue = "/acme_live_hiring_queue ghcr.io/x/hiring@sha256:expected sha256:local\n";
+
+    expect(pollerReturning($web.$queue)->poll($stack, new NullTarget))->toBeEmpty();
+
+    // The queue worker's container was removed by hand: the service is not
+    // running what the control plane deployed, so it is drift, not a metric.
+    $observations = pollerReturning($web)->poll($stack, new NullTarget);
+
+    expect($observations)->toHaveCount(1);
+    expect($observations[0]->isMissing())->toBeTrue();
+});

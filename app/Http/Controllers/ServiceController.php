@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Build;
 use App\Models\Service;
 use App\Models\ServiceEnvDefinition;
+use App\Services\Build\BuildFiles;
 use App\Services\Guide\SetupGuide;
 use Database\Seeders\ServiceCatalogSeeder;
 use Illuminate\Http\RedirectResponse;
@@ -55,7 +56,6 @@ class ServiceController extends Controller
                 'repo_full_name' => $service->repo_full_name,
                 'default_branch' => $service->default_branch,
                 'main_branch' => $service->main_branch,
-                'dockerfile_path' => $service->dockerfile_path,
                 'database_name' => $service->database_name,
                 'health_path' => $service->health_path,
                 'nats_publishes' => $service->nats_publishes ?? [],
@@ -79,6 +79,7 @@ class ServiceController extends Controller
             ]),
             'recipes' => $this->recipes(),
             'sources' => $this->sources(),
+            'files' => ServiceFileController::summary($service, app(BuildFiles::class)),
             // Every edition anyone runs or has built, with who runs it.
             'editions' => Build::query()
                 ->where('service_id', $service->id)
@@ -226,7 +227,6 @@ class ServiceController extends Controller
     {
         return [
             Service::RECIPE_LARAVEL_API => 'Laravel API',
-            Service::RECIPE_LARAVEL_WORKER => 'Laravel API + worker',
             Service::RECIPE_NEXTJS => 'Next.js',
         ];
     }
@@ -257,7 +257,6 @@ class ServiceController extends Controller
             'default_branch' => ['required', 'string', 'max:128'],
             'main_branch' => ['nullable', 'string', 'max:128'],
             'build_recipe' => ['required', Rule::in(array_keys($this->recipes()))],
-            'dockerfile_path' => ['nullable', 'string', 'max:255'],
             'subdomain' => ['required', 'string', 'max:64'],
             'database_name' => ['nullable', 'string', 'max:64'],
             'health_path' => ['required', 'string', 'max:255'],

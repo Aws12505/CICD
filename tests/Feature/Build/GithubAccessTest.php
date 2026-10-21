@@ -2,6 +2,7 @@
 
 use App\Models\Service;
 use App\Models\Setting;
+use App\Services\Build\BuildFiles;
 use App\Services\Build\ImageBuilder;
 use App\Services\Build\MigrationClassifier;
 use App\Services\GitHub\AccessCheck;
@@ -242,7 +243,7 @@ function refusingBuilder(): ImageBuilder
         : null);
     app()->instance(CommandRunner::class, $runner);
 
-    return new ImageBuilder($runner, new MigrationClassifier, app(EnvResolver::class));
+    return new ImageBuilder($runner, new MigrationClassifier, app(EnvResolver::class), app(BuildFiles::class));
 }
 
 test('a refused clone says why, in the task log and on the build', function () {
@@ -278,7 +279,7 @@ test('git is never allowed to wait on a prompt, with or without a token', functi
     foreach ([null, 'github_pat_x'] as $token) {
         Setting::put(Setting::GITHUB_TOKEN, $token);
         $runner = new RecordingRunner;
-        $builder = new ImageBuilder($runner, new MigrationClassifier, app(EnvResolver::class));
+        $builder = new ImageBuilder($runner, new MigrationClassifier, app(EnvResolver::class), app(BuildFiles::class));
         $build = $builder->create(Service::factory()->create(), 'testing', null);
 
         $builder->run($build, $build->task);

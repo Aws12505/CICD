@@ -32,7 +32,6 @@ export default function ServiceCreate({
         default_branch: 'testing',
         main_branch: 'main',
         build_recipe: 'laravel-api',
-        dockerfile_path: '',
         subdomain: '',
         database_name: '',
         health_path: '/up',

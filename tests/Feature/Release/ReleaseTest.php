@@ -444,7 +444,8 @@ test('a maintenance window is opened and always closed again', function () {
     ]);
 
     // Fail the swap, so the window has to be closed on the way out.
-    runnerWith(fakeRunner(failOn: ['up -d --no-deps']))->run($release->fresh(), new NullTarget);
+    $commands = fakeRunner(failOn: ['up -d --no-deps']);
+    runnerWith($commands)->run($release->fresh(), new NullTarget);
 
     $release->refresh();
 
@@ -452,6 +453,23 @@ test('a maintenance window is opened and always closed again', function () {
     expect($release->window_started_at)->not->toBeNull();
     // A failed release that leaves the maintenance page up is an outage.
     expect($release->window_ended_at)->not->toBeNull();
+
+    // Both vhost variants got the page. A domain still waiting for its
+    // certificate is linked to the plain one, and a TLS block written there
+    // would fail `nginx -t` and take every site on the server down with it.
+    $written = collect($commands->commands)
+        ->flatMap(function (string $command) {
+            preg_match_all("/printf '%s' '([A-Za-z0-9+\/=]+)' \| base64 -d > '([^']+)'/", $command, $m, PREG_SET_ORDER);
+
+            return array_map(fn ($w) => ['path' => $w[2], 'contents' => base64_decode($w[1])], $m);
+        })
+        ->filter(fn ($w) => str_contains($w['path'], '/nginx/hiring.acme.cloud'));
+    $http = $written->filter(fn ($w) => str_ends_with($w['path'], '.http'))->pluck('contents');
+    $conf = $written->filter(fn ($w) => str_ends_with($w['path'], '.conf'))->pluck('contents');
+
+    expect($http->contains(fn ($v) => str_contains($v, '=503')))->toBeTrue();
+    expect($http->filter(fn ($v) => str_contains($v, 'ssl_certificate')))->toBeEmpty();
+    expect($conf->contains(fn ($v) => str_contains($v, '=503') && str_contains($v, 'ssl_certificate')))->toBeTrue();
 });
 
 test('a next.js service is never asked to run artisan migrate', function () {

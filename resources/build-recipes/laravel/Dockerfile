@@ -1,13 +1,12 @@
-# Control-plane default image for a Laravel service (decision 23).
+# Control-plane default image for a Laravel service.
 #
-# Used when the repository has no Dockerfile of its own. Derived from the
-# images already proven in production (php 8.4 + apache, same extensions), but
-# immutable: the code is copied in and dependencies installed at build time,
-# instead of bind-mounting a checkout from the host.
+# The code is copied in and dependencies installed at build time: the image
+# is complete, and client servers only ever pull it. Derived from the images
+# already proven in production (php 8.4 + apache, the same extensions).
 #
 # One image serves every role. With no arguments it serves HTTP; given a
-# command (a catalog "process" such as `php artisan queue:work`) it runs that
-# instead, as www-data; given `worker` it runs the legacy supervisord set.
+# command (a process from the catalog, e.g. `php artisan queue:work`) it runs
+# that instead, as www-data. Each process is its own container.
 
 # ---------------------------------------------------------------- assets ----
 FROM node:22-bookworm-slim AS assets
@@ -26,7 +25,7 @@ FROM php:8.4-apache
 RUN a2enmod rewrite headers expires
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      git zip unzip curl ca-certificates supervisor \
+      git zip unzip curl ca-certificates \
       libicu-dev libzip-dev libpng-dev libjpeg-dev libfreetype6-dev libwebp-dev \
       libonig-dev libxml2-dev libxslt1-dev libldap2-dev libtidy-dev libgmp-dev \
       libmagickwand-dev libcurl4-openssl-dev default-mysql-client \
@@ -69,7 +68,6 @@ RUN composer dump-autoload --optimize --no-dev --no-interaction \
  && chown -R www-data:www-data storage bootstrap/cache
 
 COPY .control-plane/entrypoint.sh /usr/local/bin/control-plane-entrypoint
-COPY .control-plane/supervisord.conf /etc/supervisor/conf.d/control-plane.conf
 RUN chmod +x /usr/local/bin/control-plane-entrypoint
 
 EXPOSE 80

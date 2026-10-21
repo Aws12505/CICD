@@ -9,6 +9,7 @@ use App\Models\Setting;
 use App\Models\Stack;
 use App\Models\StackService;
 use App\Models\Task;
+use App\Services\Build\BuildFiles;
 use App\Services\Build\ImageBuilder;
 use App\Services\Build\MigrationClassifier;
 use App\Services\Remote\CommandResult;
@@ -51,7 +52,7 @@ function scriptedRunner(array $responses = []): RecordingRunner
 
 function builderWith(RecordingRunner $runner): ImageBuilder
 {
-    return new ImageBuilder($runner, new MigrationClassifier, app(EnvResolver::class));
+    return new ImageBuilder($runner, new MigrationClassifier, app(EnvResolver::class), app(BuildFiles::class));
 }
 
 function runBuild(ImageBuilder $builder, Service $service, string $branch = 'testing', ?string $sha = HEAD, ?Stack $stack = null): Build
@@ -188,7 +189,7 @@ test('a later build compares against the last successful build, and lists the co
 test('a repository without a Dockerfile builds with the control plane recipe', function () {
     $runner = scriptedRunner();
 
-    runBuild(builderWith($runner), Service::factory()->create(['dockerfile_path' => null]));
+    runBuild(builderWith($runner), Service::factory()->create());
 
     expect($runner->transcript())
         ->toContain('/.control-plane/Dockerfile')
@@ -199,7 +200,10 @@ test('a repository without a Dockerfile builds with the control plane recipe', f
 test('a repository Dockerfile overrides the recipe', function () {
     $runner = scriptedRunner();
 
-    runBuild(builderWith($runner), Service::factory()->create(['slug' => 'data', 'dockerfile_path' => 'docker/Dockerfile.prod']));
+    $data = Service::factory()->create(['slug' => 'data']);
+    $data->files()->create(['name' => 'Dockerfile', 'source' => 'repo', 'repo_path' => 'docker/Dockerfile.prod']);
+
+    runBuild(builderWith($runner), $data);
 
     expect($runner->transcript())
         ->not->toContain('FROM php:8.4-apache')

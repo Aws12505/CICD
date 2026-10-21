@@ -62,6 +62,15 @@ class StackService extends Model
     }
 
     /**
+     * A process container's name, e.g. "acme_live_hiring_queue". The compose
+     * template, the drift check and the services' own settings all use this.
+     */
+    public function processContainerName(string $process): string
+    {
+        return $this->containerName().'_'.$process;
+    }
+
+    /**
      * Whether what is running matches what we asked for.
      *
      * Compared on digest rather than tag, because a tag can be repointed at
