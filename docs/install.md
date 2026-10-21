@@ -79,6 +79,7 @@ end to end** publishes a real event through Reverb to the page.
 
 | Symptom | Fix |
 |---|---|
+| A build or release log ends with "has been attempted too many times" although it finished | The queue's `retry_after` is shorter than the job. The default is 7800 seconds, longer than any job; remove `DB_QUEUE_RETRY_AFTER` from `.env` if it is set lower, then `docker compose up -d`. |
 | A task stays "queued" | Nothing is taking jobs. `docker exec CICD_Worker supervisorctl status` must show the workers RUNNING. `docker exec CICD_Worker tail -n 60 /var/log/supervisor/worker.log` says why not. `docker restart CICD_Worker`. |
 | Live log lines do not appear | `/apps` is missing from nginx, or `APP_URL`/`REVERB_HOST` differ from the address in the browser. After changing them: `docker exec CICD sh -c 'npm run build'` then `docker compose restart` (the Reverb key is baked into the frontend). A working websocket answers `101 Switching Protocols` to a `curl -i -N` with the upgrade headers against `/app/<REVERB_APP_KEY>?protocol=7`. |
 | A build fails on the clone | The GitHub token. **Settings → Test GitHub access**; `php artisan github:check` from the container says the same. |

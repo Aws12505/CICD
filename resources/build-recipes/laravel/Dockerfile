@@ -8,19 +8,8 @@
 # command (a process from the catalog, e.g. `php artisan queue:work`) it runs
 # that instead, as www-data. Each process is its own container.
 
-# ---------------------------------------------------------------- assets ----
-FROM node:22-bookworm-slim AS assets
-WORKDIR /app
-COPY . .
-# Only services with a Vite front end build assets; the rest skip this.
-RUN if [ -f package-lock.json ] && ls vite.config.* >/dev/null 2>&1; then \
-      npm ci --no-audit --no-fund && npm run build; \
-    else \
-      mkdir -p public; \
-    fi
-
-# ------------------------------------------------------------------- app ----
-FROM php:8.4-apache
+# ------------------------------------------------------------------ base ----
+FROM php:8.4-apache AS base
 
 RUN a2enmod rewrite headers expires
 
@@ -57,15 +46,38 @@ RUN sed -ri 's!/var/www/html!/var/www/html/public!g' /etc/apache2/sites-availabl
 
 WORKDIR /var/www/html
 
+# ------------------------------------------------------------------- app ----
+FROM base AS app
+
 # Dependencies first, so a code-only change reuses this layer.
 COPY composer.json composer.lock* ./
 RUN composer install --no-dev --no-scripts --no-autoloader --no-interaction --prefer-dist
 
 COPY . .
-COPY --from=assets /app/public ./public
 RUN composer dump-autoload --optimize --no-dev --no-interaction \
- && rm -f .env \
- && chown -R www-data:www-data storage bootstrap/cache
+ && rm -f .env
+
+# ---------------------------------------------------------------- assets ----
+# Built on top of the app, not in a bare Node image: Vite plugins such as
+# Wayfinder run `php artisan …` during the build, which needs PHP and vendor/.
+# Node is copied in for this stage only and never reaches the final image.
+FROM app AS assets
+COPY --from=node:22-bookworm-slim /usr/local/bin/node /usr/local/bin/node
+COPY --from=node:22-bookworm-slim /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+ && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
+# Only services with a Vite front end build assets; the rest skip this.
+RUN if [ -f package-lock.json ] && ls vite.config.* >/dev/null 2>&1; then \
+      npm ci --no-audit --no-fund && npm run build; \
+    else \
+      mkdir -p public; \
+    fi
+
+# ----------------------------------------------------------------- final ----
+FROM app
+
+COPY --from=assets /var/www/html/public ./public
+RUN chown -R www-data:www-data storage bootstrap/cache
 
 COPY .control-plane/entrypoint.sh /usr/local/bin/control-plane-entrypoint
 RUN chmod +x /usr/local/bin/control-plane-entrypoint

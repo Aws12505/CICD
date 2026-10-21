@@ -40,7 +40,10 @@ return [
             'connection' => env('DB_QUEUE_CONNECTION'),
             'table' => env('DB_QUEUE_TABLE', 'jobs'),
             'queue' => env('DB_QUEUE', 'default'),
-            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
+            // Longer than the longest job ($timeout on RestoreBackupJob is 7500s).
+            // Shorter, and a second worker takes a build that is still running,
+            // fails it as "attempted too many times" and logs FAILED over a success.
+            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 7800),
             'after_commit' => false,
         ],
 
@@ -68,7 +71,10 @@ return [
             'driver' => 'redis',
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('REDIS_QUEUE', 'default'),
-            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
+            // Longer than the longest job ($timeout on RestoreBackupJob is 7500s).
+            // Shorter, and a second worker takes a build that is still running,
+            // fails it as "attempted too many times" and logs FAILED over a success.
+            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 7800),
             'block_for' => null,
             'after_commit' => false,
         ],
