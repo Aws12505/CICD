@@ -358,7 +358,7 @@ class ReleaseRunner
             );
 
             if ($result->failed()) {
-                return "Registering {$client->service->auth_service_name} with {$provider->service->name} failed: ".$result->failureReason();
+                return "Registering {$client->service->auth_service_name} with {$provider->service->name} failed: ".$this->explainMissingCommand($result->failureReason(), 'service-client:upsert');
             }
         }
 
@@ -391,7 +391,23 @@ class ReleaseRunner
             onOutput: $log,
         );
 
-        return $result->failed() ? 'Creating the first admin failed: '.$result->failureReason() : null;
+        return $result->failed() ? 'Creating the first admin failed: '.$this->explainMissingCommand($result->failureReason(), 'app:create-admin') : null;
+    }
+
+    /**
+     * The identity provider's image must carry the two commands the control
+     * plane drives. When it was built from a branch that lacks them, say so
+     * instead of showing a stack trace about a "namespace".
+     */
+    private function explainMissingCommand(string $reason, string $command): string
+    {
+        $namespace = explode(':', $command)[0];
+
+        if (! preg_match('/no commands defined in the "'.preg_quote($namespace, '/').'" namespace|Command "'.preg_quote($command, '/').'" is not defined/i', $reason)) {
+            return $reason;
+        }
+
+        return "the identity provider's image has no `{$command}` command. It was built from a branch that does not include the control-plane commands (app:create-admin and service-client:upsert). Merge them into that branch, run Build now, and run this release again.";
     }
 
     /**

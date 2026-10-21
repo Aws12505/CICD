@@ -8,6 +8,7 @@ use App\Models\ReleaseItem;
 use App\Models\Service;
 use App\Models\Setting;
 use App\Services\Release\ReleasePlanner;
+use App\Services\Remote\CommandResult;
 use App\Services\Stack\EnvResolver;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -148,6 +149,26 @@ test('the identity provider goes first, registers every service with its token, 
 
     $admin = $runner->commands[position($runner->commands, 'app:create-admin')];
     expect($admin)->toContain("'owner@acme.test' 'Owner' --password-stdin")->toContain($testing->fresh()->secret('admin_password'));
+});
+
+test('an identity provider image without the control-plane commands says what to merge', function () {
+    $client = twoTierClient();
+    $client->update(['admin_email' => 'owner@acme.test', 'admin_name' => 'Owner']);
+    $testing = $client->testingStack();
+    $pizzasys = Service::factory()->create(['slug' => 'pizzasys', 'subdomain' => 'auth', 'identity_provider' => true]);
+    entitle($testing, $pizzasys);
+
+    // What php artisan prints when the image was built from a branch that
+    // never received app:create-admin.
+    $runner = new RecordingRunner(fn (string $c) => str_contains($c, 'app:create-admin')
+        ? new CommandResult(1, '', 'There are no commands defined in the "app" namespace.', 1)
+        : null);
+
+    $result = runnerWith($runner)->run(releaseOf($testing, $pizzasys, successfulBuild($pizzasys, 'sha256:p')), new NullTarget);
+
+    expect($result->status)->toBe('failed');
+    $error = (string) $result->items()->first()->error;
+    expect($error)->toContain('no `app:create-admin` command')->toContain('Merge them into that branch');
 });
 
 test('a certificate that cannot be issued yet does not fail the release', function () {
