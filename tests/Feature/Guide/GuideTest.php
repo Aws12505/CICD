@@ -181,9 +181,21 @@ test('every standard service resolves fully on a stack, except the credentials s
 
     $dashboard = StackService::whereHas('service', fn ($q) => $q->where('slug', 'dashboard'))->first()->load('service.envDefinitions', 'stack.server', 'stack.client');
     $args = $resolver->buildArgs($dashboard);
-    expect($args['NEXT_PUBLIC_API_URL'])->toBe('https://authtesting.acme.cloud');
+    // Its code appends /auth/login, which on pizzasys lives under /api/v1.
+    expect($args['NEXT_PUBLIC_API_URL'])->toBe('https://authtesting.acme.cloud/api/v1');
+    $dashboardEnv = $resolver->resolve($dashboard);
+    expect($dashboardEnv['AUTH_API_URL'])->toBe('https://authtesting.acme.cloud/api/v1');
+    expect($dashboardEnv['HIRING_API_URL'])->toBe('https://hiringtesting.acme.cloud/api');
+    expect($dashboardEnv['TOOLBOX_API_URL'])->toBe('https://toolboxtesting.acme.cloud/api/v1');
+    expect($dashboardEnv['NEW_MAINTENANCE_API_URL'])->toBe('https://maintenancetesting.acme.cloud/api');
+    // LiveKit: the CSP allows only this host, and the dashboard needs it over both schemes.
+    expect($args['SCREEN_PROJECT_LIVEKIT_DOMAIN'])->toBe('https://screenstesting.acme.cloud');
+    expect($args['SCREEN_PROJECT_LIVEKIT_WSS'])->toBe('wss://screenstesting.acme.cloud');
+    expect($dashboardEnv['OPERATIONS_TIMEOUT_MS'])->toBe('30000');
+    expect($dashboardEnv)->not->toHaveKey('QA_TIMEOUT_MS');
+    expect($dashboardEnv['DSPR_API_URL'])->toBe('https://datatesting.acme.cloud/api/reports/dspr');
+    expect($args['NEXT_PUBLIC_REVERB_AUTH_ENDPOINT'])->toBe('https://notificationstesting.acme.cloud/api/broadcasting/auth');
     expect($args['NEXT_PUBLIC_REVERB_WS_HOST'])->toBe('notificationstesting.acme.cloud');
-    expect($args['NEXT_PUBLIC_REVERB_AUTH_ENDPOINT'])->toBe('https://notificationstesting.acme.cloud/broadcasting/auth');
 
     $notifications = StackService::whereHas('service', fn ($q) => $q->where('slug', 'notifications'))->first()->load('service.envDefinitions', 'stack.server', 'stack.client');
     $env = $resolver->resolve($notifications);

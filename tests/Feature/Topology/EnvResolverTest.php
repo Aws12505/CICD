@@ -8,6 +8,7 @@ use App\Models\Stack;
 use App\Models\StackEnvValue;
 use App\Models\StackService;
 use App\Services\Stack\EnvResolver;
+use Database\Seeders\ServiceCatalogSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 
@@ -215,4 +216,23 @@ test('build arguments are separated from runtime values', function () {
     expect(app(EnvResolver::class)->buildArgs($entitlement->fresh()))
         ->toHaveKey('NEXT_PUBLIC_API_URL')
         ->not->toHaveKey('RUNTIME_THING');
+});
+
+test('a dashboard seeded with the old backend addresses is corrected by the migration', function () {
+    (new ServiceCatalogSeeder)->run();
+    $dashboard = Service::where('slug', 'dashboard')->first();
+
+    // What the catalog used to say: the browser got the auth host, and every
+    // backend base was a bare host.
+    $dashboard->envDefinitions()->where('key', 'NEXT_PUBLIC_API_URL')->update(['default_value' => 'pizzasys']);
+    $dashboard->envDefinitions()->where('key', 'AUTH_API_URL')->update(['default_value' => 'pizzasys']);
+    $dashboard->envDefinitions()->where('key', 'TOOLBOX_API_URL')->update(['default_value' => 'toolbox']);
+
+    (require database_path('migrations/2026_10_22_100000_fix_dashboard_backend_urls.php'))->up();
+
+    $definitions = $dashboard->envDefinitions()->pluck('default_value', 'key');
+    expect($definitions['NEXT_PUBLIC_API_URL'])->toBe('pizzasys:/api/v1');
+    expect($definitions['DSPR_API_URL'])->toBe('data:/api/reports/dspr');
+    expect($definitions['AUTH_API_URL'])->toBe('pizzasys:/api/v1');
+    expect($definitions['TOOLBOX_API_URL'])->toBe('toolbox:/api/v1');
 });

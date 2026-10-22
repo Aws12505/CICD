@@ -256,12 +256,18 @@ class EnvResolver
 
         // "notifications@host" — the bare hostname, for websocket clients.
         $hostOnly = str_ends_with($slug, '@host');
-        $slug = $hostOnly ? substr($slug, 0, -5) : $slug;
+        // "screens@wss" — its address over wss://, for the browser's CSP.
+        $wss = str_ends_with($slug, '@wss');
+        $slug = $hostOnly ? substr($slug, 0, -5) : ($wss ? substr($slug, 0, -4) : $slug);
 
         $target = Service::query()->where('slug', $slug)->first();
 
         if ($target === null) {
             return null;
+        }
+
+        if ($wss) {
+            return 'wss://'.$stack->domainFor($target).$path;
         }
 
         return $hostOnly ? $stack->domainFor($target) : 'https://'.$stack->domainFor($target).$path;
