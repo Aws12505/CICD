@@ -30,6 +30,13 @@ export type Sample = {
     uptime_seconds: number;
     containers_total: number;
     containers_down: number;
+    mysql: {
+        connected?: number;
+        running?: number;
+        max_used?: number;
+        max_connections?: number;
+    } | null;
+    mysql_percent: number | null;
 };
 
 type Container = {
@@ -239,6 +246,14 @@ export function ServerMonitor({ serverId }: { serverId: number }) {
                                 alertAt={101}
                                 detail={`${sample.containers_total - sample.containers_down} of ${sample.containers_total} running`}
                             />
+                            {sample.mysql_percent !== null && sample.mysql && (
+                                <Gauge
+                                    label="MySQL connections"
+                                    percent={sample.mysql_percent}
+                                    alertAt={80}
+                                    detail={`${sample.mysql.connected ?? 0} of ${sample.mysql.max_connections ?? 0} · peak ${sample.mysql.max_used ?? 0}`}
+                                />
+                            )}
                         </>
                     ) : (
                         <p className="text-sm text-muted-foreground">

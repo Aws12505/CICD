@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\DbViewerController;
 use App\Http\Controllers\TerminalController;
 use Illuminate\Support\Facades\Route;
 
@@ -16,3 +17,5 @@ use Illuminate\Support\Facades\Route;
 
 Route::post('/terminal/redeem', [TerminalController::class, 'redeem'])->middleware('throttle:60,1')->name('internal.terminal.redeem');
 Route::post('/terminal/finish', [TerminalController::class, 'finish'])->name('internal.terminal.finish');
+Route::post('/db-viewer/redeem', [DbViewerController::class, 'redeem'])->middleware('throttle:60,1')->name('internal.db-viewer.redeem');
+Route::post('/db-viewer/finish', [DbViewerController::class, 'finish'])->name('internal.db-viewer.finish');

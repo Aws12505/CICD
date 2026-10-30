@@ -15,14 +15,35 @@ Three files take part:
 
 | File | What it does |
 |---|---|
-| `Dockerfile` | How the image is built. The default for a Laravel service starts from the control plane's shared PHP base image (below), copies the repository in, runs `composer install --no-dev`, builds Vite assets in a stage that has both PHP and Node (Wayfinder runs `php artisan` during the build) and sets the entrypoint. Node never reaches the final image. A service whose catalog has **Build the front end** off (an API only, such as QA) skips the asset step entirely. The default for the Next.js dashboard is a three-stage build (deps → builder → runner) on `node:22-alpine` with `npm ci`, falling back to `npm install` because the repository carries two lockfiles. |
-| `entrypoint.sh` (Laravel only) | What runs when a container starts. With no arguments it caches config and routes, links storage, and serves HTTP with Apache. Given a command, it runs that command as `www-data` instead. This one switch is how the same image is a web server or a worker. |
+| `Dockerfile` | How the image is built. The default for a Laravel service runs `composer install --no-dev` and builds Vite assets (in a stage with PHP and Node, because Wayfinder runs `php artisan`) in build stages, then copies only the application onto the shared PHP base image (below): no Composer, git, Node or compiler reaches the image, and it runs as `www-data`. A service whose catalog has **Build the front end** off (an API only, such as QA) skips the asset step. The Next.js default builds on `node:22-alpine` with `npm ci` (falling back to `npm install`: the repository carries two lockfiles); with `output: "standalone"` in the repository's `next.config` the image holds only the traced server files (about 420 MB instead of 1.2 GB). |
+| `entrypoint.sh` (Laravel only) | What runs when a container starts. It caches routes, views and events (never config: it comes from the environment), links storage, and with no arguments serves HTTP with Apache; given a command, it runs that instead. This one switch is how the same image is a web server or a worker. |
 | `.dockerignore` | What is left out of the build context (`.git`, `node_modules`, `vendor`, `storage`, `.env`…). |
+
+### Size and tests
+
+Every image is **tested before it is pushed**, and one that fails is never
+pushed: a Laravel image must have the PHP extensions the services use, must
+not run as root, and must answer its health path (`/up`) within 45 seconds
+when started with a throwaway environment and no database; a Next.js image
+must answer below 500. The image's size is recorded and shown on the Builds
+page, in red above the budget (`DEPLOY_IMAGE_BUDGET_LARAVEL_MB`, 700 by
+default; `DEPLOY_IMAGE_BUDGET_NEXTJS_MB`, 400).
+
+| Image | Before | Now |
+|---|---|---|
+| PHP base | 983 MB | 341 MB |
+| Hiring, Data, QA | about 1 GB | about 370 MB |
+| Dashboard | about 1.2 GB | 1.2 GB as the repository is; 423 MB with `output: "standalone"` |
 
 ### The shared PHP base image
 
 Compiling PHP's extensions takes minutes and is identical for every Laravel
-service, so it is done once. The control plane builds `php-base:<hash>` from
+service, so it is done once. The base keeps only the extensions' runtime
+libraries: the compilers, headers and toolchain the stock `php:8.4-apache`
+carries are removed and the result copied into a single layer. Apache keeps
+prefork with mod_php; `APACHE_MAX_WORKERS` (150 by default) and
+`PHP_MEMORY_LIMIT` (2G) are read from a service's environment, so they change
+with Apply, not a rebuild. The control plane builds `php-base:<hash>` from
 `resources/build-recipes/laravel/base.Dockerfile`, pushes it to the registry,
 and every service's `Dockerfile` starts `FROM` it. A build checks the registry
 first (the **Checking the PHP base image** step) and only builds it when the
@@ -94,6 +115,31 @@ proxies that path on the service's domain to the process container. A
 crashed worker is a stopped container on the server page and a drift alert,
 not a line in a supervisord log.
 
+### Containers on the server
+
+Every container rotates its logs (10 MB × 3), runs under an init, and is given
+time to stop: a queue worker gets its job timeout plus ten seconds and stops
+on SIGTERM, so it finishes the job in hand. The web container reports its
+health from the image; process containers have none (they serve no HTTP). The
+shared MySQL, Redis and NATS report their health too, and setting up a server
+turns on Docker's own log rotation and a weekly removal of unused images.
+
+### MySQL sized to what runs
+
+One MySQL serves every stack on a server, and **no project is ever limited**.
+Instead, the control plane works out the most connections the deployed
+services can open at once (every web container's `APACHE_MAX_WORKERS`, one per
+process container, scheduled tasks that run side by side, times the
+connections one process holds: four for Data) and sets `max_connections` a
+quarter above that, plus a reserve. It does this live, without restarting
+MySQL, on every server setup, release and Apply, so enabling a service raises
+the ceiling before its containers start. The server page shows the ceiling,
+how it is made up, and the connections in use; an alert fires at 80 %.
+
+MySQL itself is tuned for many short connections (thread cache, open-files
+limit, a buffer pool of about 40 % of the server's RAM, idle connections
+closed after ten minutes; Laravel reconnects on its next query).
+
 ### nginx and certificates
 
 Each service domain gets a vhost from the service's `nginx.conf` template:
@@ -162,6 +208,7 @@ Open the build under **Builds**; its log streams and is kept.
 | `Dockerfile … not found` | The service's `Dockerfile` is set to a repository path that does not exist at that commit. Fix the path or reset to default. |
 | `composer install` fails on an extension | The default `Dockerfile` installs the extension set the services use today. A new extension goes into the service's `Dockerfile` (customise it) and the default here if every service needs it. |
 | `npm ci` fails on the dashboard | The lockfile does not match `package.json`. The default falls back to `npm install`; the real fix is one lockfile in the repository. |
-| `base:` step fails with `Could not download from "https://pecl.php.net/…" … 504` | PECL's server is down for a moment. The base build retries each download five times and keeps the compiled extensions, so **Build now** again a few minutes later continues quickly. |
+| `base:` step fails with `installing redis failed` | PECL's server (phpredis) is down for a moment. The base build retries five times and keeps the compiled extensions, so **Build now** again a few minutes later continues quickly. |
+| `test:` step fails | The image built but did not pass its test, and was not pushed. The log shows which check and, for the health check, the container's own log: usually a missing extension or a service provider that needs the database at boot. |
 | The first Laravel build takes several minutes | It is making the shared PHP base image (see below). Once, then every Laravel service builds in seconds. |
 | `denied` on push | The registry push token lacks `write:packages`, or the registry username is not the token's owner. |

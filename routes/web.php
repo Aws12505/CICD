@@ -5,6 +5,7 @@ use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ClientEnvController;
 use App\Http\Controllers\ControlPlaneSettingsController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DbViewerController;
 use App\Http\Controllers\EditionController;
 use App\Http\Controllers\OperationsController;
 use App\Http\Controllers\PipelineController;
@@ -147,6 +148,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('clients/{client}/pin', [VersionsController::class, 'pin'])->name('clients.pin');
         Route::post('stacks/{stack}/releases', [StackPlanController::class, 'store'])->name('stacks.releases.store');
         Route::post('stacks/{stack}/build-for-live', [StackPlanController::class, 'buildForLive'])->name('stacks.build-for-live');
+        Route::post('stacks/{stack}/redeploy', [StackPlanController::class, 'redeploy'])->name('stacks.redeploy');
+        // The server's MySQL in Adminer: admins may change data, operators only read it.
+        Route::get('stacks/{stack}/database', [DbViewerController::class, 'open'])->middleware('throttle:20,1')->name('stacks.database');
+        Route::post('stacks/{stack}/services/{entitlement}/rebuild', [StackPlanController::class, 'rebuild'])->name('stacks.rebuild');
         Route::post('stacks/{stack}/backups', [StackBackupController::class, 'store'])->name('stacks.backups.store');
     });
 

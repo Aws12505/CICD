@@ -18,8 +18,8 @@ class Build extends Model
     use HasFactory;
 
     protected $fillable = [
-        'service_id', 'edition', 'number', 'stack_id', 'branch', 'commit_sha', 'version',
-        'image_tag', 'digest', 'migration_kind', 'affected_tables',
+        'service_id', 'edition', 'number', 'attempt', 'stack_id', 'branch', 'commit_sha', 'version',
+        'image_tag', 'digest', 'size_bytes', 'build_args_hash', 'migration_kind', 'affected_tables',
         'migration_reasons', 'changelog', 'status', 'trigger', 'user_id', 'task_id',
         'error', 'log_path', 'built_at',
     ];
@@ -38,6 +38,7 @@ class Build extends Model
             'migration_reasons' => 'array',
             'changelog' => 'array',
             'number' => 'integer',
+            'attempt' => 'integer',
             'built_at' => 'datetime',
         ];
     }
@@ -72,7 +73,7 @@ class Build extends Model
     public function label(): string
     {
         $name = $this->service->name.($this->edition ? '/'.$this->edition : '');
-        $number = $this->number ? ' #'.$this->number : '';
+        $number = $this->number ? ' #'.$this->number.($this->attempt > 1 ? ' r'.$this->attempt : '') : '';
         $sha = $this->commit_sha ? ' ('.$this->shortSha().')' : '';
 
         return $name.$number.$sha;

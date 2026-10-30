@@ -30,8 +30,8 @@ class Project extends Model
     {
         return [
             // Encrypted at rest. Note this makes the column unreadable if
-            // APP_KEY ever changes — see docker-entrypoint-backend.sh, which
-            // used to regenerate it on every boot.
+            // APP_KEY ever changes — see docker-entrypoint.sh (migrate), which
+            // only ever generates one when none is set.
             'github_secret' => 'encrypted',
         ];
     }

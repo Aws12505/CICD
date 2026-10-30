@@ -208,7 +208,17 @@ class StackRenderer
             'container' => $entitlement->processContainerName($process['name']),
             // JSON is valid YAML, and quotes whatever the command holds.
             'command' => json_encode(['sh', '-c', (string) $process['command']], JSON_UNESCAPED_SLASHES),
+            'stop_grace' => $this->stopGrace((string) $process['command']),
         ], ['ports_block' => $ports], composeEscape: true);
+    }
+
+    /**
+     * How long a process is given to stop: a queue worker finishes the job in
+     * hand, so it gets its job timeout and a little more; anything else 30 s.
+     */
+    private function stopGrace(string $command): string
+    {
+        return preg_match('/--timeout=(\d+)/', $command, $m) ? ((int) $m[1] + 10).'s' : '30s';
     }
 
     /**

@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { hostKeyMatches, containerCommand, quote, Recorder } = require('./lib');
+const { hostKeyMatches, containerCommand, quote, Recorder, mysqlAddressCommand, parseAddress, secretMatches } = require('./lib');
 
 const BLOB = 'AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyDataHere00000000000000';
 
@@ -33,4 +33,19 @@ test('recordings are asciicast v2 and stop growing at the limit', () => {
   assert.strictEqual(header.width, 80);
   assert.deepStrictEqual(events.map((e) => e[2]), ['hello\r\n']);
   assert.strictEqual(recorder.truncated, true);
+});
+
+test('a database tunnel goes to the MySQL container, and only to an address', () => {
+  assert.strictEqual(mysqlAddressCommand(), `docker inspect -f '{{(index .NetworkSettings.Networks "pizza_shared").IPAddress}}' mysql`);
+  assert.strictEqual(parseAddress('172.18.0.4\n'), '172.18.0.4');
+  assert.strictEqual(parseAddress(''), null);
+  assert.strictEqual(parseAddress('172.18.0.999'), null);
+  assert.strictEqual(parseAddress('evil.example.com'), null);
+});
+
+test('the shared secret is compared exactly', () => {
+  assert.strictEqual(secretMatches('a'.repeat(32), 'a'.repeat(32)), true);
+  assert.strictEqual(secretMatches('a'.repeat(32), 'b'.repeat(32)), false);
+  assert.strictEqual(secretMatches('', ''), false);
+  assert.strictEqual(secretMatches('a'.repeat(32), undefined), false);
 });

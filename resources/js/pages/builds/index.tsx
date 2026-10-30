@@ -31,6 +31,8 @@ type BuildRow = {
     trigger: string;
     user: string | null;
     migration_kind: 'none' | 'additive' | 'destructive';
+    size_mb: number | null;
+    over_budget: boolean;
     commits: number;
     changelog: { sha: string; author: string; subject: string }[];
     error: string | null;
@@ -213,6 +215,22 @@ export default function BuildsIndex({
                                                     >
                                                         {build.migration_kind}{' '}
                                                         migration
+                                                    </Badge>
+                                                )}
+                                                {build.size_mb !== null && (
+                                                    <Badge
+                                                        variant={
+                                                            build.over_budget
+                                                                ? 'destructive'
+                                                                : 'outline'
+                                                        }
+                                                        title={
+                                                            build.over_budget
+                                                                ? 'Over the size budget for this kind of service'
+                                                                : 'Image size'
+                                                        }
+                                                    >
+                                                        {build.size_mb} MB
                                                     </Badge>
                                                 )}
                                             </div>

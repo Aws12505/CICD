@@ -74,7 +74,7 @@ class SystemCheck
         if ($oldest !== null && $now - $oldest > self::QUEUE_STALE_SECONDS) {
             return $this->check('queue', 'Queue worker', self::FAIL,
                 "{$count} job(s) have been waiting for ".$this->age($now - $oldest).'. Nothing is taking jobs, so server setups, builds and releases stay "queued".',
-                'docker exec CICD_Worker supervisorctl status'."\n".'docker exec CICD_Worker tail -n 40 /var/log/supervisor/worker.log');
+                'docker compose ps queue'."\n".'docker compose logs --tail 40 queue'."\n".'docker compose up -d queue');
         }
 
         if ($failed > 0) {
@@ -94,7 +94,7 @@ class SystemCheck
         if ($beat === null) {
             return $this->check('scheduler', 'Scheduler', self::WARN,
                 'No heartbeat yet. Normal for the first minute after a start; if it stays like this, the scheduler is not running, and so no server metrics or backups are being taken.',
-                'docker exec CICD_Worker supervisorctl status laravel-scheduler');
+                'docker compose ps scheduler'."\n".'docker compose logs --tail 40 scheduler');
         }
 
         $age = time() - (int) $beat;
@@ -102,7 +102,7 @@ class SystemCheck
         return $age > self::SCHEDULER_STALE_SECONDS
             ? $this->check('scheduler', 'Scheduler', self::FAIL,
                 'Last ran '.$this->age($age).' ago. Metrics, backups and drift checks have stopped.',
-                'docker exec CICD_Worker supervisorctl restart laravel-scheduler')
+                'docker compose restart scheduler')
             : $this->check('scheduler', 'Scheduler', self::OK, 'Ran '.$this->age($age).' ago.');
     }
 
@@ -117,7 +117,7 @@ class SystemCheck
         return $missing->isNotEmpty()
             ? $this->check('reverb-credentials', 'Live logs: credentials', self::FAIL,
                 'Not set in .env: '.$missing->implode(', ').'. The browser then connects to /app/ with no key and every live log stays empty.',
-                'docker compose up -d --build'."\n".'# the boot script generates them, rebuilds the frontend and restarts everything')
+                'docker compose run --rm migrate'."\n".'docker compose up -d --build'."\n".'# migrate fills them into .env; the build bakes the key into the frontend')
             : $this->check('reverb-credentials', 'Live logs: credentials', self::OK, 'App id, key and secret are set.');
     }
 
@@ -134,7 +134,7 @@ class SystemCheck
         return $app !== '' && $host !== $app
             ? $this->check('reverb-host', 'Live logs: address', self::WARN,
                 "REVERB_HOST is {$host} but the app is served at {$app}. Browsers connect to one and the server publishes to the other.",
-                "# in .env set both to the same name:\nREVERB_HOST=\"{$app}\"\n# then: docker exec CICD sh -c 'npm run build' && docker compose restart")
+                "# in .env set both to the same name:\nREVERB_HOST=\"{$app}\"\n# then rebuild, which bakes it into the frontend:\ndocker compose up -d --build")
             : $this->check('reverb-host', 'Live logs: address', self::OK, "Browsers and the server both use {$host}.");
     }
 
@@ -147,8 +147,8 @@ class SystemCheck
             ? $this->check('reverb-publish', 'Live logs: end to end', self::OK, 'An event was published to Reverb and accepted.')
             : $this->check('reverb-publish', 'Live logs: end to end', self::FAIL,
                 'Publishing to Reverb failed: '.$error,
-                "docker exec CICD_Worker supervisorctl status laravel-reverb\n"
-                ."docker exec CICD_Worker tail -n 40 /var/log/supervisor/reverb.log\n"
+                "docker compose ps reverb\n"
+                ."docker compose logs --tail 40 reverb\n"
                 .'# and in the nginx site, /app AND /apps must proxy to 127.0.0.1:42070 (see nginx/control-plane.conf.example)');
     }
 

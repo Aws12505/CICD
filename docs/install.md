@@ -32,14 +32,24 @@ In `.env`:
 Then:
 
 ```bash
-docker compose up -d --build
-docker exec CICD php artisan migrate --force
-docker exec CICD php artisan db:seed --class=AdminUserSeeder
+docker compose run --rm migrate      # once: APP_KEY and Reverb keys into .env
+docker compose up -d --build         # builds with those keys, starts everything
 ```
 
-The `CICD` container serves the application; `CICD_Worker` runs the queue
-workers and the scheduler (metrics every minute, drift every five, backups
-nightly). The terminal gateway is a small Node service in the same compose.
+One image, a container per process, nothing installed when one starts:
+
+| Container | Does |
+|---|---|
+| `CICD_Migrate` | Runs first and exits: generates `APP_KEY` only if none is set, fills empty Reverb keys, migrates, seeds the first admin. |
+| `CICD` | The application (Apache). |
+| `queue` (two of them) | Builds, releases, backups. The only one with the Docker socket. |
+| `CICD_Scheduler` | Metrics every minute, drift every five, backups nightly, due releases. |
+| `CICD_Reverb` | The websocket for live logs. |
+| `CICD_Terminal` | The browser terminal, and the database viewer's SSH tunnels. |
+| `CICD_DB_Viewer` | The database viewer (Adminer). |
+
+`storage/` and `.env` stay on the host; client backups are in the `backups`
+volume.
 
 ## 3. nginx in front
 
@@ -47,13 +57,14 @@ Copy `nginx/control-plane.conf.example` to `/etc/nginx/sites-available/`,
 replace the domain, get a certificate (`certbot --nginx -d cp.example.com`),
 then `sudo nginx -t && sudo systemctl reload nginx`.
 
-Three paths matter besides `/`:
+Four paths matter besides `/`:
 
 | Path | Goes to | Why |
 |---|---|---|
 | `/app` | Reverb on `127.0.0.1:42070` | The browser's websocket for live logs. |
 | `/apps` | Reverb on `127.0.0.1:42070` | The server publishing events. Without it, logs stay "queued" in the browser. |
 | `/terminal/ws` | The terminal gateway | The browser terminal. |
+| `/db-viewer/` | The database viewer on `127.0.0.1:42072` | A client server's MySQL in Adminer. The path is passed on unchanged. |
 
 ## 4. Connect GitHub and the registry
 
@@ -82,8 +93,8 @@ end to end** publishes a real event through Reverb to the page.
 | The first deploy stops at Auth with "no `app:create-admin` command" (or `service-client:upsert`) | The Auth image was built from a pizzasys branch without the two control-plane commands. Merge `feat/control-plane-commands` into pizzasys's build branch (`events_testing`), push, **Build now** for Auth, then run the release again. |
 | A build or release log ends with "has been attempted too many times" although it finished | The queue's `retry_after` is shorter than the job. The default is 7800 seconds, longer than any job; remove `DB_QUEUE_RETRY_AFTER` from `.env` if it is set lower, then `docker compose up -d`. |
 | The dashboard's login fails with a CORS error, or every dashboard page returns 404 from a backend | The dashboard appends a path to every backend address it is given, so each must end in it: `/api/v1` for Auth (`NEXT_PUBLIC_API_URL`, `AUTH_API_URL`) and Toolbox, `/api` for the rest. A bare host gives 404s, and login fails its CORS preflight. Run the migrations (`php artisan migrate --force`), then **Build** the dashboard for that stack again (a browser-visible value is frozen at build) and release it. |
-| A task stays "queued" | Nothing is taking jobs. `docker exec CICD_Worker supervisorctl status` must show the workers RUNNING. `docker exec CICD_Worker tail -n 60 /var/log/supervisor/worker.log` says why not. `docker restart CICD_Worker`. |
-| Live log lines do not appear | `/apps` is missing from nginx, or `APP_URL`/`REVERB_HOST` differ from the address in the browser. After changing them: `docker exec CICD sh -c 'npm run build'` then `docker compose restart` (the Reverb key is baked into the frontend). A working websocket answers `101 Switching Protocols` to a `curl -i -N` with the upgrade headers against `/app/<REVERB_APP_KEY>?protocol=7`. |
+| A task stays "queued" | Nothing is taking jobs. `docker compose ps queue` must show both running; `docker compose logs --tail 60 queue` says why not; `docker compose up -d queue`. |
+| Live log lines do not appear | `/apps` is missing from nginx, or `APP_URL`/`REVERB_HOST` differ from the address in the browser. After changing them: `docker compose up -d --build` (the Reverb key and host are baked into the frontend). A working websocket answers `101 Switching Protocols` to a `curl -i -N` with the upgrade headers against `/app/<REVERB_APP_KEY>?protocol=7`. |
 | A build fails on the clone | The GitHub token. **Settings → Test GitHub access**; `php artisan github:check` from the container says the same. |
 | Failed jobs | `docker exec CICD php artisan queue:failed`, then `queue:retry all` once fixed. |
 
@@ -92,7 +103,17 @@ end to end** publishes a real event through Reverb to the page.
 ```bash
 cd /opt/control-plane && git pull
 docker compose up -d --build
-docker exec CICD php artisan migrate --force
 ```
 
-The boot script rebuilds the frontend and never touches a set `APP_KEY`.
+The build bakes in the code, its packages and the frontend; `migrate` runs
+the migrations before the others start, and never touches a set `APP_KEY`.
+
+**Moving from the old layout** (one `CICD_Worker` with supervisord): run the
+update once with `--remove-orphans`, so the old worker is stopped and removed
+instead of running its own queue and scheduler beside the new ones:
+
+```bash
+docker compose up -d --build --remove-orphans
+```
+
+`storage/` and `.env` are used where they are.

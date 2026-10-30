@@ -117,6 +117,30 @@ Promote screen. **Roll back** from any finished release takes seconds.
 
 ---
 
+## Redeploy after changing a setting
+
+**Apply** (client → Environment) restarts what reads a changed value. When you
+want the running version put back cleanly instead (or Apply is not enough):
+
+1. Open **Versions → Update** (testing) or **Promote** (live) for the client.
+2. Under **Running now**, **Redeploy** one service or **Redeploy all**. The
+   same images go back with the current settings; nothing new ships, so live
+   can do it too.
+
+**A value baked in at build** (the dashboard's `NEXT_PUBLIC_*`) needs the
+image built again. The environment page says so on the tier; **Running now**
+marks the service and offers **Rebuild & redeploy**: the commit it runs is
+built again for that stack with today's values (`#40 r2`), and the redeploy
+starts by itself when the build finishes.
+
+## Look at a database
+
+From the client page, **Database** on a stack opens that server's MySQL in
+Adminer, already signed in. Admins can change data; operators can only read
+it, which MySQL itself enforces. It sees the stacks' databases only, never
+MySQL's own. Every opening is listed on the server page, and the session ends
+after 30 minutes idle or four hours.
+
 ## Change one client
 
 | They want… | Where | What happens |

@@ -23,6 +23,9 @@ class Fleet
 
     public const MEMORY_ALERT = 90;
 
+    /** Warned well before MySQL would refuse anyone. */
+    public const MYSQL_ALERT = 80;
+
     public const CERT_DAYS = 14;
 
     /**
@@ -76,6 +79,8 @@ class Fleet
             'uptime_seconds' => $m->uptime_seconds,
             'containers_total' => count($m->containers ?? []),
             'containers_down' => collect($m->containers ?? [])->where('running', false)->count(),
+            'mysql' => $m->mysql,
+            'mysql_percent' => $m->mysqlPercent(),
         ];
     }
 
@@ -99,6 +104,10 @@ class Fleet
 
             if ($latest->memPercent() > self::MEMORY_ALERT) {
                 $alerts[] = ['level' => 'critical', 'message' => "Memory {$latest->memPercent()}% used"];
+            }
+
+            if (($latest->mysqlPercent() ?? 0) >= self::MYSQL_ALERT) {
+                $alerts[] = ['level' => 'critical', 'message' => "MySQL connections at {$latest->mysqlPercent()}% of the ceiling ({$latest->mysql['connected']} of {$latest->mysql['max_connections']})"];
             }
 
             foreach ($latest->containers ?? [] as $container) {

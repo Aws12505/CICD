@@ -98,12 +98,36 @@ const keyFileType = (fingerprint: string | null) => {
     return 'rsa';
 };
 
+type DbSession = {
+    id: number;
+    user: string | null;
+    mode: 'read' | 'write';
+    ip: string | null;
+    started_at: string | null;
+    ended_at: string | null;
+    end_reason: string | null;
+};
+
+type MysqlDemand = {
+    stack: string;
+    service: string;
+    web: number;
+    processes: number;
+    burst: number;
+    per_process: number;
+    connections: number;
+};
+
 export default function ServerShow({
     server,
     actions,
+    mysql,
+    db_sessions,
 }: {
     server: ServerDetail;
     actions: { key: string; label: string }[];
+    mysql: { ceiling: number; demand: MysqlDemand[] };
+    db_sessions: DbSession[];
 }) {
     const online = server.status === 'online';
     const provision = server.last_provision;
@@ -311,17 +335,144 @@ export default function ServerShow({
                     </>
                 )}
 
+                {mysql.demand.length > 0 && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>MySQL capacity</CardTitle>
+                            <p className="text-sm text-muted-foreground">
+                                MySQL accepts {mysql.ceiling} connections: the
+                                most every deployed service can open at once,
+                                plus a quarter and a reserve. It is recomputed
+                                and applied on every release, so no project is
+                                ever refused.
+                            </p>
+                        </CardHeader>
+                        <CardContent className="p-0">
+                            <table className="w-full text-sm">
+                                <thead className="text-left text-xs text-muted-foreground">
+                                    <tr>
+                                        <th className="px-6 py-2 font-medium">
+                                            Service
+                                        </th>
+                                        <th className="px-2 py-2 font-medium">
+                                            Web workers
+                                        </th>
+                                        <th className="px-2 py-2 font-medium">
+                                            Processes
+                                        </th>
+                                        <th className="px-2 py-2 font-medium">
+                                            Scheduled
+                                        </th>
+                                        <th className="px-2 py-2 font-medium">
+                                            × per process
+                                        </th>
+                                        <th className="px-6 py-2 text-right font-medium">
+                                            Connections
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
+                                    {mysql.demand.map((row) => (
+                                        <tr key={`${row.stack}-${row.service}`}>
+                                            <td className="px-6 py-2">
+                                                {row.service}
+                                                <span className="text-muted-foreground">
+                                                    {' '}
+                                                    · {row.stack}
+                                                </span>
+                                            </td>
+                                            <td className="px-2 py-2">
+                                                {row.web}
+                                            </td>
+                                            <td className="px-2 py-2">
+                                                {row.processes}
+                                            </td>
+                                            <td className="px-2 py-2">
+                                                {row.burst}
+                                            </td>
+                                            <td className="px-2 py-2">
+                                                {row.per_process}
+                                            </td>
+                                            <td className="px-6 py-2 text-right font-mono">
+                                                {row.connections}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </CardContent>
+                    </Card>
+                )}
+
                 {server.stacks && server.stacks.length > 0 && (
                     <Card>
                         <CardHeader>
                             <CardTitle>Stacks on this server</CardTitle>
                         </CardHeader>
-                        <CardContent className="flex flex-wrap gap-2">
+                        <CardContent className="flex flex-wrap items-center gap-2">
                             {server.stacks.map((stack) => (
                                 <Badge key={stack.id} variant="outline">
                                     {stack.label} · {stack.status}
                                 </Badge>
                             ))}
+                            {server.provisioned_at && (
+                                // Adminer, outside this app: a new tab.
+                                <a
+                                    href={`/stacks/${server.stacks[0].id}/database`}
+                                    target="_blank"
+                                    rel="noopener"
+                                    className="ml-2 text-sm text-primary hover:underline"
+                                >
+                                    Open the database
+                                </a>
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
+
+                {db_sessions.length > 0 && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Database sessions</CardTitle>
+                            <p className="text-sm text-muted-foreground">
+                                Every opening of this server&apos;s database.
+                                Admins can change data; operators only read it.
+                            </p>
+                        </CardHeader>
+                        <CardContent className="p-0">
+                            <div className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
+                                {db_sessions.map((s) => (
+                                    <div
+                                        key={s.id}
+                                        className="flex flex-wrap items-center justify-between gap-2 px-6 py-2 text-sm"
+                                    >
+                                        <span>
+                                            {s.user ?? 'deleted user'}{' '}
+                                            <Badge
+                                                variant={
+                                                    s.mode === 'write'
+                                                        ? 'destructive'
+                                                        : 'outline'
+                                                }
+                                            >
+                                                {s.mode === 'write'
+                                                    ? 'read and write'
+                                                    : 'read only'}
+                                            </Badge>
+                                        </span>
+                                        <span className="text-xs text-muted-foreground">
+                                            {s.started_at &&
+                                                new Date(
+                                                    s.started_at,
+                                                ).toLocaleString()}
+                                            {s.ended_at
+                                                ? ` · ended: ${s.end_reason ?? 'closed'}`
+                                                : ' · open'}
+                                            {s.ip ? ` · ${s.ip}` : ''}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
                         </CardContent>
                     </Card>
                 )}

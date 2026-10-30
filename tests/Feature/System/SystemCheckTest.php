@@ -95,7 +95,7 @@ test('a job that has waited minutes means nothing is taking jobs', function () {
     $queue = $checks->queue();
     expect($queue)->status->toBe('fail');
     expect($queue['detail'])->toContain('2 job(s)')->toContain('"queued"');
-    expect($queue['fix'])->toContain('supervisorctl status');
+    expect($queue['fix'])->toContain('docker compose logs --tail 40 queue');
 });
 
 test('recent failures are a warning, not an outage', function () {

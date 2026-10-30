@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\ApplyStackJob;
+use App\Models\Build;
 use App\Models\Client;
 use App\Models\ClientSetting;
 use App\Models\Service;
@@ -77,6 +78,12 @@ class ClientEnvController extends Controller
                 'tier' => $stack->tier,
                 'status' => $stack->status,
                 'deployed' => $entitlements->where('stack_id', $stack->id)->contains(fn (StackService $s) => filled($s->current_digest)),
+                // Per-client images built with build-time values that have
+                // changed since: Apply cannot reach those, a rebuild can.
+                'stale' => $entitlements->where('stack_id', $stack->id)
+                    ->filter(fn (StackService $s) => $this->env->buildArgsStale($s, Build::query()->where('digest', $s->current_digest)->latest('id')->first()))
+                    ->map(fn (StackService $s) => $s->service->name)
+                    ->values(),
                 'services' => $entitlements->where('stack_id', $stack->id)->mapWithKeys(fn (StackService $s) => [
                     $s->service->slug => [
                         'missing' => $this->env->missingRequired($s),

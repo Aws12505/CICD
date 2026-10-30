@@ -140,6 +140,8 @@ class ImageBuilder
 
             $steps = [
                 'build' => [$this->buildScript($build, $workspace, $reference), ['DOCKER_BUILDKIT' => '1']],
+                // Nothing that fails here is ever pushed.
+                'test' => [$this->testScript($build, $reference), []],
                 'push' => ['docker push '.Shell::quote($reference), []],
             ];
 
@@ -155,7 +157,14 @@ class ImageBuilder
                 return $this->fail($build, $task, 'Pushed, but no digest could be read back.');
             }
 
-            $build->update(['status' => 'success', 'digest' => $digest, 'built_at' => now()]);
+            $size = $this->readSize($reference);
+            $budget = $this->budgetMb($service);
+
+            if ($size !== null && $size > $budget * 1024 * 1024) {
+                $task->log(sprintf("\nThe image is %d MB, over the %d MB budget for this kind of service.\n", intdiv($size, 1024 * 1024), $budget));
+            }
+
+            $build->update(['status' => 'success', 'digest' => $digest, 'size_bytes' => $size, 'built_at' => now()]);
             SetupGuide::forget();
             $task->succeed("{$build->label()} is ready to deploy ({$digest}).");
 
@@ -171,9 +180,11 @@ class ImageBuilder
      * The image tag.
      *
      * Never contains a client's name. An edition is named for an operating
-     * model, and a per-stack build is distinguished by the stack's id.
+     * model, and a per-stack build is distinguished by the stack's id. A
+     * rebuild of the same commit (attempt 2 and on) gets its own tag, so it
+     * never moves a tag an earlier release recorded.
      */
-    public function tagFor(Service $service, string $commitSha, ?string $edition = null, ?Stack $stack = null): string
+    public function tagFor(Service $service, string $commitSha, ?string $edition = null, ?Stack $stack = null, int $attempt = 1): string
     {
         $tag = substr($commitSha, 0, 7);
 
@@ -183,6 +194,10 @@ class ImageBuilder
 
         if ($stack !== null) {
             $tag .= '-s'.$stack->id;
+        }
+
+        if ($attempt > 1) {
+            $tag .= '-r'.$attempt;
         }
 
         return $tag;
@@ -246,11 +261,13 @@ class ImageBuilder
             ->first();
 
         $classified = $this->classifier->classify($this->migrationsBetween($service, $previous?->commit_sha, $sha));
+        $attempt = $this->attemptFor($build, $sha);
 
         $build->update([
             'commit_sha' => $sha,
             'number' => $this->numberFor($build, $sha),
-            'image_tag' => $this->tagFor($service, $sha, $build->edition, $build->stack),
+            'attempt' => $attempt,
+            'image_tag' => $this->tagFor($service, $sha, $build->edition, $build->stack, $attempt),
             'migration_kind' => $classified['kind'],
             'affected_tables' => $classified['tables'],
             'migration_reasons' => $classified['reasons'],
@@ -279,6 +296,22 @@ class ImageBuilder
             ->where('service_id', $build->service_id)
             ->where('edition', $build->edition)
             ->max('number') + 1;
+    }
+
+    /**
+     * 1 + the successful builds of this commit for the same stack and edition
+     * already made: a rebuild after its build-time values changed.
+     */
+    private function attemptFor(Build $build, string $sha): int
+    {
+        return Build::query()
+            ->where('service_id', $build->service_id)
+            ->where('edition', $build->edition)
+            ->where('stack_id', $build->stack_id)
+            ->where('commit_sha', $sha)
+            ->where('status', 'success')
+            ->whereKeyNot($build->id)
+            ->count() + 1;
     }
 
     /**
@@ -462,9 +495,14 @@ class ImageBuilder
 
         if ($build->stack_id !== null) {
             $entitlement = $build->stack->services()->where('service_id', $service->id)->first();
+            $args = $entitlement ? $this->env->buildArgs($entitlement) : [];
             $lines = [];
 
-            foreach ($entitlement ? $this->env->buildArgs($entitlement) : [] as $key => $value) {
+            // What this image is built with, so a later change to any of
+            // these values shows it is out of date.
+            $build->update(['build_args_hash' => EnvResolver::hashBuildArgs($args)]);
+
+            foreach ($args as $key => $value) {
                 $lines[] = $key.'='.str_replace("\n", '', (string) $value);
             }
 
@@ -530,9 +568,75 @@ class ImageBuilder
             // service never builds a front end it does not serve.
             $laravel ? '--build-arg '.Shell::quote('BUILD_ASSETS='.($service->build_assets ? '1' : '0')) : '',
             $laravel ? '--build-arg '.Shell::quote('PHP_BASE='.PhpBase::reference()) : '',
+            $laravel ? '--build-arg '.Shell::quote('HEALTH_PATH='.($service->health_path ?: '/up')) : '',
             '-t '.Shell::quote($reference),
             Shell::quote($workspace),
         ]));
+    }
+
+    /** Required in every Laravel image; the base checks the same list. */
+    public const REQUIRED_EXTENSIONS = ['bcmath', 'gd', 'intl', 'mbstring', 'mysqli', 'pcntl', 'pdo_mysql', 'redis', 'sockets', 'zip'];
+
+    /**
+     * Start the image the way a server would, with a throwaway environment,
+     * and see it answer.
+     *
+     * Laravel: the extensions are there, it does not run as root, and its
+     * health path answers 200 with no database, cache or queue behind it
+     * (all set to in-memory drivers). Next.js: it answers below 500.
+     */
+    private function testScript(Build $build, string $reference): string
+    {
+        $service = $build->service;
+        $laravel = BuildFiles::recipeFor($service) === 'laravel';
+        $image = Shell::quote($reference);
+        $name = Shell::quote('cp-test-'.$build->id.'-'.bin2hex(random_bytes(3)));
+        $path = $service->health_path ?: ($laravel ? '/up' : '/');
+
+        $lines = ['set -e', "image={$image}", "name={$name}"];
+
+        if ($laravel) {
+            $lines[] = 'modules=$(docker run --rm --entrypoint php "$image" -m | tr "[:upper:]" "[:lower:]")';
+            $lines[] = 'for ext in '.implode(' ', self::REQUIRED_EXTENSIONS).'; do echo "$modules" | grep -qx "$ext" || { echo "missing PHP extension: $ext"; exit 1; }; done';
+            $lines[] = 'echo "PHP extensions present."';
+        }
+
+        $lines[] = '[ "$(docker run --rm --entrypoint id "$image" -u)" != "0" ] || { echo "the image runs as root"; exit 1; }';
+
+        $env = $laravel
+            ? '-e APP_KEY="base64:$(head -c 32 /dev/urandom | base64)" -e APP_ENV=production -e APP_DEBUG=false '
+                .'-e CACHE_STORE=array -e SESSION_DRIVER=array -e QUEUE_CONNECTION=sync -e LOG_CHANNEL=stderr -e BROADCAST_CONNECTION=log'
+            : '';
+
+        $probe = $laravel
+            ? 'docker exec "$name" curl -fsS -o /dev/null '.Shell::quote('http://127.0.0.1'.$path)
+            : 'docker exec "$name" node -e '.Shell::quote("fetch('http://127.0.0.1:3000{$path}',{redirect:'manual'}).then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))");
+
+        return implode("\n", [
+            ...$lines,
+            "docker run -d --name \"\$name\" {$env} \"\$image\" >/dev/null",
+            'ok=0',
+            'trap \'[ "$ok" = 1 ] || docker logs --tail 80 "$name" 2>&1; docker rm -f "$name" >/dev/null 2>&1 || true\' EXIT',
+            'for i in $(seq 1 45); do',
+            "  if {$probe} 2>/dev/null; then ok=1; echo \"It answered on {$path}.\"; exit 0; fi",
+            '  sleep 1',
+            'done',
+            "echo \"It did not answer on {$path} within 45 seconds. Its log:\"",
+            'exit 1',
+        ]);
+    }
+
+    private function readSize(string $reference): ?int
+    {
+        $result = $this->runner->run(new LocalTarget, 'docker image inspect --format \'{{.Size}}\' '.Shell::quote($reference), timeout: 60);
+        $size = trim($result->stdout);
+
+        return $result->successful() && ctype_digit($size) ? (int) $size : null;
+    }
+
+    private function budgetMb(Service $service): int
+    {
+        return (int) config('deploy.image_budget_mb.'.BuildFiles::recipeFor($service), 700);
     }
 
     private function loginScript(): string

@@ -1,5 +1,5 @@
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import { AlertTriangle, Hammer, Play, Siren } from 'lucide-react';
+import { AlertTriangle, Hammer, Play, RotateCw, Siren } from 'lucide-react';
 import { useMemo } from 'react';
 import type { FormEventHandler } from 'react';
 import InputError from '@/components/input-error';
@@ -46,6 +46,14 @@ type PromoteRow = {
     status: 'same' | 'ready' | 'needs_build' | 'not_enabled';
 };
 
+type RunningRow = {
+    entitlement_id: number;
+    service: { id: number; name: string };
+    build: BuildSummary | null;
+    per_stack_build: boolean;
+    stale: boolean;
+};
+
 type Props = {
     stack: {
         id: number;
@@ -57,6 +65,7 @@ type Props = {
     };
     mode: 'update' | 'promote' | 'emergency';
     rows: UpdateRow[] | PromoteRow[];
+    running: RunningRow[];
 };
 
 function MigrationBadge({ kind }: { kind: BuildSummary['migration_kind'] }) {
@@ -68,6 +77,107 @@ function MigrationBadge({ kind }: { kind: BuildSummary['migration_kind'] }) {
         <Badge variant={kind === 'destructive' ? 'destructive' : 'secondary'}>
             {kind} migration
         </Badge>
+    );
+}
+
+/**
+ * What the stack runs now. Redeploy puts the same images back with the
+ * current settings; a per-client image whose build-time values changed has
+ * to be built again first.
+ */
+function RunningNow({
+    stackId,
+    serverReady,
+    running,
+}: {
+    stackId: number;
+    serverReady: boolean;
+    running: RunningRow[];
+}) {
+    if (running.length === 0) {
+        return null;
+    }
+
+    const redeploy = (serviceIds?: number[]) =>
+        router.post(`/stacks/${stackId}/redeploy`, {
+            service_ids: serviceIds ?? null,
+        });
+
+    return (
+        <Card>
+            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+                <div>
+                    <CardTitle>Running now</CardTitle>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                        Redeploy puts the same images back with the current
+                        settings, after you change a value. Nothing new ships.
+                    </p>
+                </div>
+                <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!serverReady}
+                    onClick={() => redeploy()}
+                >
+                    <RotateCw className="size-4" /> Redeploy all
+                </Button>
+            </CardHeader>
+            <CardContent className="p-0">
+                <div className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
+                    {running.map((row) => (
+                        <div
+                            key={row.service.id}
+                            className="flex flex-wrap items-center justify-between gap-3 px-6 py-3"
+                        >
+                            <div className="min-w-0">
+                                <div className="font-medium">
+                                    {row.service.name}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                    {row.build?.label ??
+                                        'not from a recorded build'}
+                                </div>
+                                {row.stale && (
+                                    <div className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                                        Built with older build-time values.
+                                        Rebuild to pick up the current ones.
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex gap-2">
+                                {row.per_stack_build && (
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant={
+                                            row.stale ? 'default' : 'outline'
+                                        }
+                                        disabled={!serverReady || !row.build}
+                                        onClick={() =>
+                                            router.post(
+                                                `/stacks/${stackId}/services/${row.entitlement_id}/rebuild`,
+                                            )
+                                        }
+                                    >
+                                        <Hammer className="size-4" /> Rebuild
+                                        &amp; redeploy
+                                    </Button>
+                                )}
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={!serverReady}
+                                    onClick={() => redeploy([row.service.id])}
+                                >
+                                    <RotateCw className="size-4" /> Redeploy
+                                </Button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </CardContent>
+        </Card>
     );
 }
 
@@ -87,7 +197,7 @@ function commitsBetween(row: UpdateRow, chosenId: number) {
         .flatMap((b) => b.changelog);
 }
 
-export default function StackPlan({ stack, mode, rows }: Props) {
+export default function StackPlan({ stack, mode, rows, running }: Props) {
     const update = mode !== 'promote';
     const updateRows = rows as UpdateRow[];
     const promoteRows = rows as PromoteRow[];
@@ -593,6 +703,13 @@ export default function StackPlan({ stack, mode, rows }: Props) {
                     )}
                 </div>
             </form>
+            <div className="px-4 pb-4">
+                <RunningNow
+                    stackId={stack.id}
+                    serverReady={stack.server_ready}
+                    running={running}
+                />
+            </div>
         </>
     );
 }

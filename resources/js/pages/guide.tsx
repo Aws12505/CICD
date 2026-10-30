@@ -192,15 +192,10 @@ const HOW_TOS: HowTo[] = [
             </>,
             <>
                 <b>Stays "queued".</b> Nothing is taking jobs.{' '}
-                <Code>docker exec CICD_Worker supervisorctl status</Code> must
-                show <Code>laravel-worker_00</Code> and{' '}
-                <Code>laravel-worker_01</Code> RUNNING. If one says FATAL or
-                keeps restarting,{' '}
-                <Code>
-                    docker exec CICD_Worker tail -n 60
-                    /var/log/supervisor/worker.log
-                </Code>{' '}
-                shows why. Then <Code>docker restart CICD_Worker</Code>.
+                <Code>docker compose ps queue</Code> must show both queue
+                containers running. If one keeps restarting,{' '}
+                <Code>docker compose logs --tail 60 queue</Code> shows why. Then{' '}
+                <Code>docker compose up -d queue</Code>.
             </>,
             <>
                 <b>Jobs that failed</b> (the worker ran them and they crashed):{' '}
@@ -366,8 +361,8 @@ const HOW_TOS: HowTo[] = [
                 </Link>{' '}
                 → <b>Build &amp; run files</b>. Six files, each with a pill:{' '}
                 <b>default</b> (the control plane's copy), <b>customised</b>{' '}
-                (edited here) or <b>from repository</b> (a path in the
-                service's own repository).
+                (edited here) or <b>from repository</b> (a path in the service's
+                own repository).
             </>,
             <>
                 To change one, open it, edit, <b>Save</b>. The build files (
@@ -377,18 +372,18 @@ const HOW_TOS: HowTo[] = [
                 deploy or <b>Apply</b> of each stack.
             </>,
             <>
-                If the repository has its own Dockerfile, choose <b>Use a file
-                in the repository</b> and give its path. The control plane's
-                entrypoint is then not copied, so that file is marked as not
-                used.
+                If the repository has its own Dockerfile, choose{' '}
+                <b>Use a file in the repository</b> and give its path. The
+                control plane's entrypoint is then not copied, so that file is
+                marked as not used.
             </>,
             <>
                 The compose and nginx files are templates:{' '}
                 <Code>{'{{slug}}'}</Code>, <Code>{'{{image}}'}</Code> and the
                 rest are filled per stack. <b>Preview on a stack</b> shows the
                 finished docker-compose.yml and vhost before anything is
-                deployed. A template with an unknown placeholder is refused
-                when you save, with the list of allowed ones.
+                deployed. A template with an unknown placeholder is refused when
+                you save, with the list of allowed ones.
             </>,
             <>
                 <b>Workers</b> are the <b>Processes</b> table on the same page:

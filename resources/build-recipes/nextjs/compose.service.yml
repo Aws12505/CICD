@@ -14,11 +14,9 @@
       - "{{storage_host}}:{{storage_container}}"
     restart: unless-stopped
     init: true
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:{{container_port}}/ || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
     networks:
       - {{network}}

@@ -1,5 +1,8 @@
 .git
 .github
+.idea
+.vscode
+.claude
 .env
 .env.*
 !.env.example
@@ -9,6 +12,11 @@ storage/logs/*
 storage/framework/cache/*
 storage/framework/sessions/*
 storage/framework/views/*
+storage/app/*
 bootstrap/cache/*.php
 tests
+docs
+*.md
 docker-compose*.yml
+Dockerfile*
+.phpunit.result.cache

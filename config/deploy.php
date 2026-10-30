@@ -63,4 +63,34 @@ return [
         'interval_seconds' => (int) env('DEPLOY_HEALTH_INTERVAL', 5),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Shared MySQL on each client server
+    |--------------------------------------------------------------------------
+    |
+    | The share of the server's RAM given to InnoDB's buffer pool; the rest is
+    | for the services. max_connections is not here: it is computed from what
+    | each server runs (MysqlSizing) and kept current by every release.
+    |
+    */
+
+    'mysql' => [
+        'buffer_pool_ratio' => (float) env('DEPLOY_MYSQL_BUFFER_POOL_RATIO', 0.4),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Image size budgets
+    |--------------------------------------------------------------------------
+    |
+    | A build bigger than this is flagged on the Builds page. A warning, not a
+    | failure: an image that works but is large still ships.
+    |
+    */
+
+    'image_budget_mb' => [
+        'laravel' => (int) env('DEPLOY_IMAGE_BUDGET_LARAVEL_MB', 700),
+        'nextjs' => (int) env('DEPLOY_IMAGE_BUDGET_NEXTJS_MB', 400),
+    ],
+
 ];

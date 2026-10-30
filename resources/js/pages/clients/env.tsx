@@ -39,6 +39,7 @@ type StackEnv = {
     tier: string;
     status: string;
     deployed: boolean;
+    stale: string[];
     services: Record<
         string,
         {
@@ -298,6 +299,23 @@ export default function ClientEnv({
                                     </Button>
                                 </CardHeader>
                                 <CardContent className="grid gap-2 text-sm">
+                                    {stack.stale.length > 0 && (
+                                        <div className="flex items-start gap-2 text-amber-600 dark:text-amber-400">
+                                            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                                            <span>
+                                                {stack.stale.join(', ')} was
+                                                built with older build-time
+                                                values; Apply cannot change
+                                                those.{' '}
+                                                <Link
+                                                    href={`/stacks/${stack.id}/plan`}
+                                                    className="underline"
+                                                >
+                                                    Rebuild &amp; redeploy
+                                                </Link>
+                                            </span>
+                                        </div>
+                                    )}
                                     {missing.length === 0 ? (
                                         <p className="text-muted-foreground">
                                             Every required value is set.

@@ -36,6 +36,7 @@ class MetricsCollector
     echo "uptime $(cut -d' ' -f1 /proc/uptime)"
     docker stats --no-stream --format 'stat|{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}' 2>/dev/null || true
     docker ps -a --format 'ps|{{.Names}}|{{.State}}|{{.Status}}|{{.Image}}' 2>/dev/null || true
+    docker exec mysql sh -c 'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -B -e "SHOW GLOBAL STATUS WHERE Variable_name IN (\"Threads_connected\",\"Threads_running\",\"Max_used_connections\",\"Aborted_connects\"); SHOW GLOBAL VARIABLES LIKE \"max_connections\""' 2>/dev/null | awk '{print "mysql", $1, $2}' || true
     for d in /etc/letsencrypt/live/*/; do
       [ -f "$d/cert.pem" ] || continue
       echo "cert|$(basename "$d")|$(openssl x509 -enddate -noout -in "$d/cert.pem" 2>/dev/null | cut -d= -f2)"
@@ -84,7 +85,7 @@ class MetricsCollector
             'cpu_percent' => 0.0, 'load1' => 0.0, 'load5' => 0.0, 'load15' => 0.0,
             'mem_total' => 0, 'mem_used' => 0, 'swap_total' => 0, 'swap_used' => 0,
             'disk_total' => 0, 'disk_used' => 0, 'net_rx' => 0, 'net_tx' => 0,
-            'uptime_seconds' => 0, 'containers' => [], 'certificates' => [],
+            'uptime_seconds' => 0, 'containers' => [], 'certificates' => [], 'mysql' => null,
         ];
         $mem = [];
         $stats = [];
@@ -129,6 +130,21 @@ class MetricsCollector
                     break;
                 case 'uptime':
                     $sample['uptime_seconds'] = (int) ($f[1] ?? 0);
+                    break;
+                case 'mysql':
+                    $key = match (strtolower($f[1] ?? '')) {
+                        'threads_connected' => 'connected',
+                        'threads_running' => 'running',
+                        'max_used_connections' => 'max_used',
+                        'aborted_connects' => 'aborted',
+                        'max_connections' => 'max_connections',
+                        default => null,
+                    };
+
+                    if ($key !== null) {
+                        $sample['mysql'] ??= [];
+                        $sample['mysql'][$key] = (int) ($f[2] ?? 0);
+                    }
                     break;
             }
         }

@@ -254,3 +254,43 @@ test('rendering is deterministic, so drift means something changed', function ()
     // report a difference that is only ordering.
     expect($renderer->compose($stack->fresh()))->toBe($renderer->compose($stack->fresh()));
 });
+
+/*
+|--------------------------------------------------------------------------
+| Hardening
+|--------------------------------------------------------------------------
+*/
+
+test('every container rotates its logs and runs under an init', function () {
+    $stack = renderableStack();
+    enable($stack, ['processes' => [['name' => 'queue', 'command' => 'php artisan queue:work --tries=1 --timeout=600']]]);
+
+    $compose = app(StackRenderer::class)->compose($stack);
+
+    expect(substr_count($compose, 'max-size: "10m"'))->toBe(2);
+    expect(substr_count($compose, 'init: true'))->toBe(2);
+});
+
+test('a worker stops on SIGTERM and is given its job timeout to finish', function () {
+    $stack = renderableStack();
+    enable($stack, ['processes' => [
+        ['name' => 'queue', 'command' => 'php artisan queue:work --tries=1 --timeout=600'],
+        ['name' => 'nats', 'command' => 'php artisan nats:consume'],
+    ]]);
+
+    $compose = app(StackRenderer::class)->compose($stack);
+    $queue = Str::between($compose, 'hiring_queue:', 'hiring_nats:');
+
+    // Apache's image stops on SIGWINCH; a queue worker needs SIGTERM.
+    expect($queue)->toContain('stop_signal: SIGTERM')->toContain('stop_grace_period: 610s');
+    expect(Str::after($compose, 'hiring_nats:'))->toContain('stop_grace_period: 30s');
+    // The image's web health check means nothing for a worker.
+    expect($queue)->toContain("healthcheck:\n      disable: true");
+});
+
+test('the Next.js block leaves the health check to the image, which has no curl', function () {
+    $stack = renderableStack();
+    enable($stack, ['slug' => 'dashboard', 'subdomain' => 'app', 'database_name' => null, 'build_recipe' => Service::RECIPE_NEXTJS, 'per_stack_build' => true]);
+
+    expect(app(StackRenderer::class)->compose($stack))->not->toContain('curl');
+});

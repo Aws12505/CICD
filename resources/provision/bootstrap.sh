@@ -42,6 +42,42 @@ if ! command -v docker >/dev/null 2>&1; then
   apt-get install -y -q docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 fi
 systemctl enable --now docker >/dev/null
+
+# Container logs rotate (a chatty container can no longer fill the disk), and
+# restarting the Docker daemon itself leaves running containers running.
+# Written only when it differs, because a change restarts the daemon.
+DAEMON_JSON='{
+  "log-driver": "json-file",
+  "log-opts": {"max-size": "10m", "max-file": "3"},
+  "live-restore": true
+}'
+if [ "$(cat /etc/docker/daemon.json 2>/dev/null)" != "${DAEMON_JSON}" ]; then
+  mkdir -p /etc/docker
+  printf '%s\n' "${DAEMON_JSON}" > /etc/docker/daemon.json
+  systemctl restart docker
+fi
+
+# Images no container has used for a week are removed every week; every
+# release pulls by digest from the registry, so a rollback never needs one.
+cat > /etc/systemd/system/docker-image-prune.service <<'UNIT'
+[Unit]
+Description=Remove unused Docker images older than a week
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker image prune -af --filter until=168h
+UNIT
+cat > /etc/systemd/system/docker-image-prune.timer <<'UNIT'
+[Unit]
+Description=Weekly removal of unused Docker images
+[Timer]
+OnCalendar=weekly
+Persistent=true
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now docker-image-prune.timer >/dev/null
+
 docker --version
 docker compose version
 

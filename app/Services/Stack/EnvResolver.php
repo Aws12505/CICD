@@ -2,6 +2,7 @@
 
 namespace App\Services\Stack;
 
+use App\Models\Build;
 use App\Models\ClientSetting;
 use App\Models\Service;
 use App\Models\ServiceEnvDefinition;
@@ -108,6 +109,31 @@ class EnvResolver
      *
      * @return array<string, string>
      */
+    /**
+     * One fingerprint for a set of build-time values, independent of order.
+     *
+     * @param  array<string, mixed>  $args
+     */
+    public static function hashBuildArgs(array $args): string
+    {
+        ksort($args);
+
+        return hash('sha256', (string) json_encode(array_map('strval', $args), JSON_UNESCAPED_SLASHES));
+    }
+
+    /**
+     * A per-stack image built with build-time values that have since changed:
+     * only a rebuild of the same commit picks the new ones up.
+     */
+    public function buildArgsStale(StackService $entitlement, ?Build $running): bool
+    {
+        if (! $entitlement->service->per_stack_build || $running === null || $running->build_args_hash === null) {
+            return false;
+        }
+
+        return ! hash_equals($running->build_args_hash, self::hashBuildArgs($this->buildArgs($entitlement)));
+    }
+
     public function buildArgs(StackService $entitlement): array
     {
         $resolved = $this->resolve($entitlement);

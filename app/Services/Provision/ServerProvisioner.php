@@ -32,7 +32,7 @@ class ServerProvisioner
         $task->start();
 
         // Mint everything first so it can all be masked before anything runs.
-        foreach (['mysql_root', 'redis_root', 'nats_token'] as $key) {
+        foreach (['mysql_root', 'redis_root', 'nats_token', 'mysql_viewer_rw', 'mysql_viewer_ro'] as $key) {
             $server->secret($key);
         }
 
@@ -72,7 +72,10 @@ class ServerProvisioner
 
             $task->step('Starting the shared MySQL, Redis and NATS');
 
-            foreach ($this->infra->files($server) as $path => [$contents, $mode, $writeOnce]) {
+            $memoryKb = (int) trim($this->runner->run($target, "awk '/^MemTotal:/ {print \$2}' /proc/meminfo", timeout: 20)->stdout);
+            $ceiling = app(MysqlSizing::class)->ceiling($server);
+
+            foreach ($this->infra->files($server, $memoryKb, $ceiling) as $path => [$contents, $mode, $writeOnce]) {
                 $command = $writeOnce
                     ? RemoteFiles::writeIfMissing($path, $contents, $mode)
                     : RemoteFiles::write($path, $contents, $mode);

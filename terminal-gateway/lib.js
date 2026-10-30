@@ -80,4 +80,31 @@ class Recorder {
   }
 }
 
-module.exports = { hostKeyMatches, quote, containerCommand, Recorder };
+/**
+ * The shared MySQL's address on the server's Docker network. MySQL publishes
+ * no port on the host, so a tunnel goes to the container itself.
+ */
+function mysqlAddressCommand() {
+  return `docker inspect -f ${quote('{{(index .NetworkSettings.Networks "pizza_shared").IPAddress}}')} mysql`;
+}
+
+/** An IPv4 address from that command's output, or null. */
+function parseAddress(output) {
+  const address = String(output || '').trim();
+
+  if (!/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(address)) {
+    return null;
+  }
+
+  return address.split('.').every((part) => Number(part) <= 255) ? address : null;
+}
+
+/** Constant-time comparison of the shared secret. */
+function secretMatches(expected, presented) {
+  const a = Buffer.from(String(expected || ''));
+  const b = Buffer.from(String(presented || ''));
+
+  return a.length > 0 && a.length === b.length && require('node:crypto').timingSafeEqual(a, b);
+}
+
+module.exports = { hostKeyMatches, quote, containerCommand, Recorder, mysqlAddressCommand, parseAddress, secretMatches };

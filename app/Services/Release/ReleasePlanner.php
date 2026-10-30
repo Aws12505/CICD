@@ -209,6 +209,65 @@ class ReleasePlanner
     }
 
     /**
+     * Deploy again what the stack already runs, to pick up changed settings.
+     *
+     * Nothing new ships, so it is allowed on live as well as testing. The
+     * runner recreates the containers even though their image is the same.
+     *
+     * @param  list<int>|null  $serviceIds  only these services; null for all
+     */
+    public function redeploy(Stack $stack, ?array $serviceIds = null, ?User $actor = null): Release
+    {
+        $release = Release::create([
+            'stack_id' => $stack->id,
+            'kind' => Release::KIND_REDEPLOY,
+            'created_by' => $actor?->id,
+        ]);
+
+        $position = 0;
+
+        foreach ($this->entitlements($stack) as $entitlement) {
+            if (blank($entitlement->current_digest) || ($serviceIds !== null && ! in_array($entitlement->service_id, $serviceIds, true))) {
+                continue;
+            }
+
+            ReleaseItem::create([
+                'release_id' => $release->id,
+                'service_id' => $entitlement->service_id,
+                'build_id' => $this->buildByDigest($entitlement->current_digest)?->id,
+                'to_digest' => $entitlement->current_digest,
+                'position' => $position++,
+            ]);
+        }
+
+        return $release->load('items.build', 'items.service');
+    }
+
+    /**
+     * A redeploy of a build that is still being made: a per-stack image of
+     * the running commit, rebuilt because its build-time values changed. It
+     * has no digest yet; BuildJob fills it in and starts the release when
+     * the build succeeds, or fails the release when it does not.
+     */
+    public function redeployAfterBuild(Build $build, ?User $actor = null): Release
+    {
+        $release = Release::create([
+            'stack_id' => $build->stack_id,
+            'kind' => Release::KIND_REDEPLOY,
+            'created_by' => $actor?->id,
+        ]);
+
+        ReleaseItem::create([
+            'release_id' => $release->id,
+            'service_id' => $build->service_id,
+            'build_id' => $build->id,
+            'position' => 0,
+        ]);
+
+        return $release->load('items.build', 'items.service');
+    }
+
+    /**
      * Put a stack back to the digests a past release recorded.
      *
      * Restoring a database dump is never part of this. That discards

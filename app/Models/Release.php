@@ -17,6 +17,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  *   promotion  copy the digests testing is running to live — no rebuild
  *   rollback   re-point at digests a past release recorded
  *   emergency  straight to live, reason required, permanently marked
+ *   redeploy   the digests a stack already runs, again, to pick up changed
+ *              settings (or a rebuild of the same commit with new
+ *              build-time values)
  */
 class Release extends Model
 {
@@ -29,6 +32,8 @@ class Release extends Model
     public const KIND_ROLLBACK = 'rollback';
 
     public const KIND_EMERGENCY = 'emergency';
+
+    public const KIND_REDEPLOY = 'redeploy';
 
     protected $fillable = [
         'stack_id', 'kind', 'status', 'reason', 'source_release_id',
@@ -80,10 +85,14 @@ class Release extends Model
         return $this->kind === self::KIND_EMERGENCY;
     }
 
-    /** Whether any item in this release will run a destructive migration. */
+    /**
+     * Whether any item in this release will run a destructive migration. A
+     * redeploy never does: the migrations already ran when that commit was
+     * first deployed.
+     */
     public function needsWindow(): bool
     {
-        return $this->items->contains(fn (ReleaseItem $item) => $item->build?->needsWindow() ?? false);
+        return $this->kind !== self::KIND_REDEPLOY && $this->items->contains(fn (ReleaseItem $item) => $item->build?->needsWindow() ?? false);
     }
 
     /** Tables the pre-migration dump has to cover. */

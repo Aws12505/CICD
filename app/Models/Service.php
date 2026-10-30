@@ -30,6 +30,8 @@ class Service extends Model
         'build_recipe',
         'subdomain',
         'database_name',
+        'db_connections_per_process',
+        'db_scheduler_burst',
         'auth_service_name',
         'extra_databases',
         'processes',

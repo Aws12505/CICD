@@ -91,12 +91,12 @@ function FirstAdmin({ slug, email }: { slug: string; email: string }) {
         string | null
     > | null>(null);
 
-    const reveal = () => {
-        void fetch(`/clients/${slug}/admin-password`, {
+    const reveal = async () => {
+        const response = await fetch(`/clients/${slug}/admin-password`, {
             headers: { Accept: 'application/json' },
-        })
-            .then((r) => r.json())
-            .then(setPasswords);
+        });
+
+        setPasswords(await response.json());
     };
 
     return (
@@ -206,6 +206,24 @@ export default function ClientShow({ client, services, stacks, steps }: Props) {
                                     >
                                         Backups
                                     </Link>
+                                    {canManage && stack.server && (
+                                        // A full page outside this app
+                                        // (Adminer), so a plain link in a
+                                        // new tab rather than an Inertia one.
+                                        <a
+                                            href={`/stacks/${stack.id}/database`}
+                                            target="_blank"
+                                            rel="noopener"
+                                            className="text-sm text-primary hover:underline"
+                                            title={
+                                                isAdmin
+                                                    ? 'Open the database (you can change data)'
+                                                    : 'Open the database, read only'
+                                            }
+                                        >
+                                            Database
+                                        </a>
+                                    )}
                                 </div>
                             </div>
                         </CardHeader>

@@ -42,7 +42,7 @@ class BuildFiles
             'blocks' => [],
         ],
         self::COMPOSE_PROCESS => [
-            'scalars' => ['slug', 'name', 'image', 'container', 'host_port', 'container_port', 'env_file', 'storage_host', 'storage_container', 'network', 'command'],
+            'scalars' => ['slug', 'name', 'image', 'container', 'host_port', 'container_port', 'env_file', 'storage_host', 'storage_container', 'network', 'command', 'stop_grace'],
             'blocks' => ['ports_block'],
         ],
         self::NGINX => [

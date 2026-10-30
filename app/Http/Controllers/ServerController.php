@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\ProvisionServerJob;
+use App\Models\DbViewerSession;
 use App\Models\Server;
 use App\Models\Stack;
 use App\Models\Task;
 use App\Services\Guide\SetupGuide;
+use App\Services\Provision\MysqlSizing;
 use App\Services\Remote\ServerProbe;
 use App\Support\SshKeypair;
 use Illuminate\Http\RedirectResponse;
@@ -84,6 +86,27 @@ class ServerController extends Controller
                 'last_provision' => $provisioning ? TaskController::summarise($provisioning) : null,
             ],
             'actions' => collect(ServerOpsController::ACTIONS)->map(fn ($a, $key) => ['key' => $key, 'label' => $a[0]])->values(),
+            'mysql' => [
+                'ceiling' => app(MysqlSizing::class)->ceiling($server),
+                'demand' => app(MysqlSizing::class)->demand($server),
+            ],
+            // Who opened this server's database, and how it ended.
+            'db_sessions' => DbViewerSession::query()
+                ->with('user')
+                ->where('server_id', $server->id)
+                ->whereNotNull('started_at')
+                ->latest('started_at')
+                ->limit(20)
+                ->get()
+                ->map(fn (DbViewerSession $s) => [
+                    'id' => $s->id,
+                    'user' => $s->user?->name,
+                    'mode' => $s->mode,
+                    'ip' => $s->ip,
+                    'started_at' => $s->started_at?->toIso8601String(),
+                    'ended_at' => $s->ended_at?->toIso8601String(),
+                    'end_reason' => $s->end_reason,
+                ]),
         ]);
     }
 

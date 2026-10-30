@@ -16,7 +16,7 @@ class ServerMetric extends Model
     protected $fillable = [
         'server_id', 'recorded_at', 'cpu_percent', 'load1', 'load5', 'load15',
         'mem_total', 'mem_used', 'swap_total', 'swap_used', 'disk_total',
-        'disk_used', 'net_rx', 'net_tx', 'uptime_seconds', 'containers',
+        'disk_used', 'net_rx', 'net_tx', 'uptime_seconds', 'containers', 'mysql',
     ];
 
     /**
@@ -27,6 +27,7 @@ class ServerMetric extends Model
         return [
             'recorded_at' => 'datetime',
             'containers' => 'array',
+            'mysql' => 'array',
             'cpu_percent' => 'float',
             'load1' => 'float',
             'load5' => 'float',
@@ -51,6 +52,14 @@ class ServerMetric extends Model
     public function memPercent(): float
     {
         return $this->mem_total > 0 ? round(100 * $this->mem_used / $this->mem_total, 1) : 0.0;
+    }
+
+    /** Connections in use as a share of MySQL's ceiling; null when unknown. */
+    public function mysqlPercent(): ?float
+    {
+        $max = (int) ($this->mysql['max_connections'] ?? 0);
+
+        return $max > 0 ? round(100 * (int) ($this->mysql['connected'] ?? 0) / $max, 1) : null;
     }
 
     public function diskPercent(): float

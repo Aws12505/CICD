@@ -3,6 +3,7 @@
 namespace App\Services\Provision;
 
 use App\Contracts\Target;
+use App\Models\DbViewerSession;
 use App\Models\Service;
 use App\Models\Stack;
 use App\Models\StackService;
@@ -52,6 +53,9 @@ class StackProvisioner
 
         $steps = [
             'MySQL user and databases' => fn () => $this->mysql($stack, $services),
+            // Every service this release can start, on every stack of the
+            // server, is counted before any of them does.
+            'MySQL capacity' => fn () => $this->capacity($stack),
             'Redis user' => fn () => $this->redis($stack),
             'NATS streams and consumers' => fn () => $this->nats($stack, $services),
         ];
@@ -67,6 +71,14 @@ class StackProvisioner
         }
 
         return null;
+    }
+
+    /** max_connections for everything deployed on the stack's server. */
+    public function capacity(Stack $stack): string
+    {
+        $sizing = app(MysqlSizing::class);
+
+        return $sizing->applyScript($sizing->ceiling($stack->server));
     }
 
     /** Every database a stack needs, tier-suffixed. */
@@ -99,9 +111,27 @@ class StackProvisioner
             "ALTER USER '{$user}'@'%' IDENTIFIED BY '{$password}';",
         ];
 
+        // The database viewer's two users, one per server: it sees only the
+        // stacks' databases (never mysql.* or the password hashes in it), and
+        // the read-only one can change nothing, whatever the page allows.
+        $viewers = [
+            DbViewerSession::MYSQL_USERS[DbViewerSession::MODE_WRITE] => [$stack->server->secret('mysql_viewer_rw'),
+                'SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, INDEX, CREATE VIEW, SHOW VIEW, TRIGGER, REFERENCES, CREATE TEMPORARY TABLES, LOCK TABLES, EXECUTE'],
+            DbViewerSession::MYSQL_USERS[DbViewerSession::MODE_READ] => [$stack->server->secret('mysql_viewer_ro'), 'SELECT, SHOW VIEW'],
+        ];
+
+        foreach ($viewers as $viewer => [$viewerPassword]) {
+            $sql[] = "CREATE USER IF NOT EXISTS '{$viewer}'@'%' IDENTIFIED BY '{$viewerPassword}';";
+            $sql[] = "ALTER USER '{$viewer}'@'%' IDENTIFIED BY '{$viewerPassword}';";
+        }
+
         foreach ($this->databases($stack, $services) as $database) {
             $sql[] = "CREATE DATABASE IF NOT EXISTS `{$database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;";
             $sql[] = "GRANT ALL PRIVILEGES ON `{$database}`.* TO '{$user}'@'%';";
+
+            foreach ($viewers as $viewer => [, $privileges]) {
+                $sql[] = "GRANT {$privileges} ON `{$database}`.* TO '{$viewer}'@'%';";
+            }
         }
 
         $sql[] = 'FLUSH PRIVILEGES;';

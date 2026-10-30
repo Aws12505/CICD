@@ -179,6 +179,10 @@ class ReleaseRunner
         foreach ($release->items as $item) {
             $entitlement = $this->entitlement($release, $item);
 
+            if (blank($item->to_digest ?? $item->build?->digest)) {
+                throw new RuntimeException("{$item->service->slug} has no image yet: its build has not finished.");
+            }
+
             if ($entitlement === null || ! $entitlement->enabled) {
                 throw new RuntimeException("{$item->service->slug} is not enabled on this stack.");
             }
@@ -259,8 +263,10 @@ class ReleaseRunner
         }
 
         // The web container and its process containers share one image, so
-        // they move together.
-        $steps['swap'] = $compose.' up -d --no-deps '.Shell::join($service->composeServices());
+        // they move together. The same image again (a redeploy) is forced:
+        // compose would otherwise leave a container whose image is unchanged.
+        $recreate = $item->from_digest === $item->to_digest ? ' --force-recreate' : '';
+        $steps['swap'] = $compose.' up -d --no-deps'.$recreate.' '.Shell::join($service->composeServices());
 
         foreach ($steps as $name => $command) {
             $log("--- {$name}\n");

@@ -166,7 +166,7 @@ class ServiceCatalogSeeder extends Seeder
                     ['stream' => 'AUTH', 'durable' => 'OPERATIONS_AUTH_CONSUMER'],
                     ['stream' => 'HIRING', 'durable' => 'OPERATIONS_HIRING_CONSUMER'],
                 ],
-                'processes' => $this->processes(scheduler: true, queue: 'php artisan queue:work --queue=humanity,default --sleep=3 --tries=1 --timeout=600', nats: true),
+                'processes' => $this->processes(scheduler: true, queue: 'php artisan queue:work --queue=humanity,default --sleep=3 --tries=1 --timeout=600 --max-time=3600', nats: true),
             ], env: [
                 'OPERATIONS_DEFAULT_TIMEZONE' => $this->literal(null, 'IANA zone for stores without one, e.g. America/New_York.'),
                 'HUMANITY_DRIVER' => $this->literal('fake', 'fake or humanity. Leave on fake until the client gives Humanity access.'),
@@ -250,6 +250,10 @@ class ServiceCatalogSeeder extends Seeder
                 'subdomain' => 'data',
                 'database_name' => 'lc_pizza_data',
                 'extra_databases' => ['lc_pizza_data_operational', 'lc_pizza_data_aggregation', 'lc_pizza_data_archive'],
+                // One process can hold operational, archive, aggregation and
+                // old at once, and ten scheduled tasks run in the background.
+                'db_connections_per_process' => 4,
+                'db_scheduler_burst' => 10,
                 'auth_service_name' => 'Data',
                 'nats_publishes' => ['DATA', 'NOTIFICATIONS'],
                 'nats_consumes' => [
@@ -258,6 +262,8 @@ class ServiceCatalogSeeder extends Seeder
                 ],
                 'processes' => $this->processes(scheduler: true, queue: true, nats: true),
             ], env: [
+                // This repository has no "mysql" connection; operational is its default.
+                'DB_CONNECTION' => $this->literal('operational'),
                 'X_SECRET_KEY' => $this->generated('shared:x_secret_data', 'Shared with the dashboard, which sends it as X-Secret-Key.', required: true),
                 ...$this->extraDatabase('OPERATIONAL', 'lc_pizza_data_operational'),
                 ...$this->extraDatabase('AGGREGATION', 'lc_pizza_data_aggregation'),
@@ -449,10 +455,12 @@ class ServiceCatalogSeeder extends Seeder
             'per_stack_build' => false,
             'identity_provider' => false,
             'build_assets' => true,
+            'db_connections_per_process' => 1,
+            'db_scheduler_burst' => 0,
             'extra_databases' => [],
             'first_run_commands' => [],
             'every_deploy_commands' => [],
-        ], $service, ['env' => $common + $env]);
+        ], $service, ['env' => $env + $common]);
     }
 
     /**
@@ -467,7 +475,7 @@ class ServiceCatalogSeeder extends Seeder
         }
 
         if ($queue) {
-            $processes[] = ['name' => 'queue', 'command' => is_string($queue) ? $queue : 'php artisan queue:work --sleep=3 --tries=1 --timeout=600'];
+            $processes[] = ['name' => 'queue', 'command' => is_string($queue) ? $queue : 'php artisan queue:work --sleep=3 --tries=1 --timeout=600 --max-time=3600'];
         }
 
         if ($nats) {

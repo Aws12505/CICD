@@ -2,9 +2,11 @@
 
 namespace App\Services\Stack;
 
+use App\Models\Build;
 use App\Models\Stack;
 use App\Models\StackService;
 use App\Models\Task;
+use App\Services\Provision\StackProvisioner;
 use App\Services\Remote\CommandRunner;
 use App\Support\Shell;
 use Throwable;
@@ -60,6 +62,9 @@ class StackApplier
                 return true;
             }
 
+            // A changed APACHE_MAX_WORKERS changes what MySQL must accept.
+            $this->runner->run($target, app(StackProvisioner::class)->capacity($stack), timeout: 60, onOutput: $task->logger());
+
             $task->step('Restarting what changed');
 
             $services = $running->flatMap(fn (StackService $s) => $s->service->composeServices())->values()->all();
@@ -78,7 +83,15 @@ class StackApplier
                 return false;
             }
 
-            $task->succeed('Applied. Containers whose settings changed were recreated.');
+            // Build-time values are baked into a per-client image; restarting
+            // it changes nothing.
+            $stale = $running
+                ->filter(fn (StackService $s) => $this->env->buildArgsStale($s, Build::query()->where('digest', $s->current_digest)->latest('id')->first()))
+                ->map(fn (StackService $s) => $s->service->name);
+
+            $task->succeed('Applied. Containers whose settings changed were recreated.'.($stale->isEmpty()
+                ? ''
+                : ' '.$stale->join(', ').' was built with older build-time values: use Rebuild & redeploy on the stack plan page to pick them up.'));
 
             return true;
         } catch (Throwable $e) {

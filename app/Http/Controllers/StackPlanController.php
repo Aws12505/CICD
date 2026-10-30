@@ -56,7 +56,71 @@ class StackPlanController extends Controller
             ],
             'mode' => $mode,
             'rows' => $mode === 'promote' ? $this->promotionRows($stack) : $this->updateRows($stack),
+            'running' => $this->runningRows($stack),
         ]);
+    }
+
+    /**
+     * Deploy again what the stack already runs, to pick up changed settings.
+     * Nothing new ships, so live may do it too.
+     */
+    public function redeploy(Request $request, Stack $stack): RedirectResponse
+    {
+        $data = $request->validate([
+            'service_ids' => ['nullable', 'array'],
+            'service_ids.*' => ['integer'],
+        ]);
+
+        $release = $this->planner->redeploy(
+            $stack,
+            isset($data['service_ids']) ? array_map('intval', $data['service_ids']) : null,
+            $request->user(),
+        );
+
+        if ($release->items->isEmpty()) {
+            $release->delete();
+
+            return back()->with('error', 'Nothing to redeploy: none of those services has been deployed to this stack yet.');
+        }
+
+        ReleaseJob::launch($release, $request->user());
+
+        return redirect()->route('releases.show', $release);
+    }
+
+    /**
+     * A per-stack image whose build-time values changed: build the commit it
+     * runs again, with today's values, and redeploy it once built.
+     */
+    public function rebuild(Request $request, Stack $stack, StackService $entitlement): RedirectResponse
+    {
+        abort_unless($entitlement->stack_id === $stack->id, 404);
+        $entitlement->load('service');
+
+        if (! $entitlement->service->per_stack_build) {
+            return back()->with('error', "{$entitlement->service->name} is one image for every client: change its settings and Redeploy.");
+        }
+
+        $running = $this->planner->buildByDigest($entitlement->current_digest);
+
+        if ($running === null || blank($running->commit_sha)) {
+            return back()->with('error', "{$entitlement->service->name} has not been deployed from a build of this control plane yet.");
+        }
+
+        $build = $this->builder->create(
+            $entitlement->service,
+            $running->branch,
+            $running->commit_sha,
+            $stack,
+            Build::TRIGGER_MANUAL,
+            $request->user(),
+        );
+
+        $release = $this->planner->redeployAfterBuild($build, $request->user());
+        BuildJob::dispatch($build->id);
+
+        return redirect()->route('releases.show', $release)
+            ->with('success', "Building {$entitlement->service->name} again with the current values. The redeploy starts by itself when the build finishes.");
     }
 
     public function store(Request $request, Stack $stack): RedirectResponse
@@ -169,6 +233,35 @@ class StackPlanController extends Controller
                     'deployed' => filled($entitlement->current_digest),
                     'candidates' => $candidates->map(fn (Build $b) => $this->board->buildSummary($b))->values(),
                     'missing_env' => $this->env->missingRequired($entitlement),
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * What the stack runs now, for Redeploy and Rebuild & redeploy.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function runningRows(Stack $stack): array
+    {
+        return StackService::query()
+            ->with('service.envDefinitions', 'stack.client', 'stack.server')
+            ->where('stack_id', $stack->id)
+            ->where('enabled', true)
+            ->whereNotNull('current_digest')
+            ->get()
+            ->sortBy(fn (StackService $s) => [$s->service->identity_provider ? 0 : 1, $s->service->position, $s->service->slug])
+            ->map(function (StackService $entitlement) {
+                $running = $this->planner->buildByDigest($entitlement->current_digest);
+
+                return [
+                    'entitlement_id' => $entitlement->id,
+                    'service' => ['id' => $entitlement->service->id, 'name' => $entitlement->service->name],
+                    'build' => $running ? $this->board->buildSummary($running) : null,
+                    'per_stack_build' => (bool) $entitlement->service->per_stack_build,
+                    'stale' => $this->env->buildArgsStale($entitlement, $running),
                 ];
             })
             ->values()

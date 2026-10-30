@@ -8,5 +8,14 @@
     volumes:
       - "{{storage_host}}:{{storage_container}}"
     restart: unless-stopped
+    init: true
+    # Workers stop on SIGTERM and finish the job in hand first.
+    stop_signal: SIGTERM
+    stop_grace_period: {{stop_grace}}
+    healthcheck:
+      disable: true
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
     networks:
       - {{network}}

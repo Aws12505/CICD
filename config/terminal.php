@@ -22,4 +22,8 @@ return [
     // A token is good for one connection within this many seconds.
     'token_ttl' => 60,
 
+    // The gateway as the control plane's containers reach it, for opening
+    // database tunnels (the database viewer).
+    'gateway_url' => env('TERMINAL_GATEWAY_URL', 'http://terminal-gateway:8090'),
+
 ];

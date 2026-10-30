@@ -1,21 +1,96 @@
 name: LCPortalCICD
 
+# One image, a container per process. Updating: `git pull`, then
+# `docker compose up -d --build`; migrate runs first, the rest after it.
+
+x-app: &app
+  image: lcportal-cicd:local
+  # Built once, by the migrate service below; never pulled from anywhere.
+  pull_policy: never
+  env_file: ./.env
+  volumes:
+    # Kept across updates: logs, build workspaces, terminal recordings.
+    - ./storage:/var/www/html/storage
+    # Read by Laravel, and written once by `migrate` for missing Reverb keys.
+    - ./.env:/var/www/html/.env
+    - backups:/var/backups/control-plane
+  extra_hosts:
+    - 'host.docker.internal:host-gateway'
+  restart: unless-stopped
+  init: true
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+
 services:
-  backend:
+  migrate:
+    <<: *app
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # Baked into the front end, from .env.
+        VITE_APP_NAME: ${APP_NAME:-Control plane}
+        VITE_REVERB_APP_KEY: ${REVERB_APP_KEY:-}
+        VITE_REVERB_HOST: ${REVERB_HOST:-}
+        VITE_REVERB_PORT: ${REVERB_PORT:-443}
+        VITE_REVERB_SCHEME: ${REVERB_SCHEME:-https}
+    pull_policy: build
+    container_name: CICD_Migrate
+    command: ["migrate"]
+    restart: "no"
+    depends_on: []
+
+  backend:
+    <<: *app
     container_name: CICD
+    command: ["web"]
     ports:
       - '42069:80'
-    volumes:
-      - ./:/var/www/html:delegated
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
-    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1/up"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
-  # Browser terminals to client servers. Proxy /terminal/ws to it from the
-  # host nginx (see terminal-gateway/README.md); it is not public otherwise.
+  # Builds, releases and backups. It drives Docker on the host (image builds,
+  # old pipelines under /root/core/apps), so it alone gets the socket.
+  queue:
+    <<: *app
+    command: ["queue"]
+    scale: 2
+    stop_grace_period: 3610s
+    volumes:
+      - ./storage:/var/www/html/storage
+      - ./.env:/var/www/html/.env
+      - backups:/var/backups/control-plane
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /root/core/apps:/root/core/apps
+
+  scheduler:
+    <<: *app
+    container_name: CICD_Scheduler
+    command: ["scheduler"]
+
+  # The websocket for live logs. Proxy /app and /apps to it from the host nginx.
+  reverb:
+    <<: *app
+    container_name: CICD_Reverb
+    command: ["reverb"]
+    ports:
+      - '42070:8080'
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 8080) ? 0 : 1);"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Browser terminals to client servers, and the database viewer's SSH
+  # tunnels. Proxy /terminal/ws to it from the host nginx.
   terminal-gateway:
     build:
       context: ./terminal-gateway
@@ -26,18 +101,27 @@ services:
       LARAVEL_URL: http://backend
       TERMINAL_GATEWAY_SECRET: ${TERMINAL_GATEWAY_SECRET}
     restart: unless-stopped
+    init: true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8090/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
-  worker:
+  # The database viewer (Adminer). Proxy /db-viewer/ to it from the host
+  # nginx; it answers nothing useful without a ticket the control plane issued.
+  db-viewer:
     build:
-      context: .
-      dockerfile: Dockerfile.worker
-    container_name: CICD_Worker
+      context: ./db-viewer
+    container_name: CICD_DB_Viewer
     ports:
-      - '42070:8080'
-    volumes:
-      - ./:/var/www/html:delegated
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /root/core/apps:/root/core/apps
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
+      - '127.0.0.1:42072:8080'
+    environment:
+      LARAVEL_URL: http://backend
+      TERMINAL_GATEWAY_SECRET: ${TERMINAL_GATEWAY_SECRET}
     restart: unless-stopped
+
+volumes:
+  # Client backups pulled to the control plane (config/backup.php). Before
+  # this they lived inside the worker container and were lost on recreate.
+  backups:

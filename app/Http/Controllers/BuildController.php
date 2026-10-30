@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Jobs\BuildJob;
 use App\Models\Build;
 use App\Models\Service;
+use App\Services\Build\BuildFiles;
 use App\Services\Build\ImageBuilder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -47,6 +48,8 @@ class BuildController extends Controller
         $data = $request->validate([
             'service_id' => ['required', 'exists:services,id'],
             'branch' => ['required', 'string', 'max:200', 'regex:/^[A-Za-z0-9._\/-]+$/', 'not_regex:/\.\./'],
+            // A per-stack service: build for this one stack only.
+            'stack_id' => ['nullable', 'integer', 'exists:stacks,id'],
         ]);
 
         $service = Service::findOrFail($data['service_id']);
@@ -57,6 +60,10 @@ class BuildController extends Controller
         }
 
         $stacks = BuildWebhookController::buildsFor($service, $branch);
+
+        if (filled($data['stack_id'] ?? null) && $service->per_stack_build) {
+            $stacks = array_values(array_filter($stacks, fn ($stack) => $stack?->id === (int) $data['stack_id']));
+        }
 
         if ($stacks === []) {
             return back()->with('error', "No client runs {$service->name} on that edition, so there is nothing to build it for.");
@@ -94,6 +101,9 @@ class BuildController extends Controller
             'trigger' => $build->trigger,
             'user' => $build->user?->name,
             'migration_kind' => $build->migration_kind,
+            'size_mb' => $build->size_bytes ? (int) round($build->size_bytes / 1024 / 1024) : null,
+            'over_budget' => $build->size_bytes !== null
+                && $build->size_bytes > (int) config('deploy.image_budget_mb.'.BuildFiles::recipeFor($build->service), 700) * 1024 * 1024,
             'commits' => count($build->changelog ?? []),
             'changelog' => $build->changelog ?? [],
             'error' => $build->error,

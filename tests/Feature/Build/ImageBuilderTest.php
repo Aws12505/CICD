@@ -199,9 +199,41 @@ test('the PHP base tag follows its Dockerfile, so editing it makes a new base', 
         'ghcr.io/rnd-experts-team/php-base:'.substr(sha1(PhpBase::contents()), 0, 12),
     );
     // Extensions compile here, once, not in every service's Dockerfile.
-    expect(PhpBase::contents())->toContain('docker-php-ext-install');
+    expect(PhpBase::contents())->toContain('install-php-extensions');
     expect(app(BuildFiles::class)->defaultContents(Service::factory()->make(['build_recipe' => Service::RECIPE_LARAVEL_API]), BuildFiles::DOCKERFILE))
-        ->toContain('FROM ${PHP_BASE}')->not->toContain('docker-php-ext-install');
+        ->toContain('FROM ${PHP_BASE}')->not->toContain('install-php-extensions');
+});
+
+test('the Laravel image ships no build tools and does not run as root', function () {
+    $dockerfile = app(BuildFiles::class)->defaultContents(Service::factory()->make(['build_recipe' => Service::RECIPE_LARAVEL_API]), BuildFiles::DOCKERFILE);
+    $final = Str::afterLast($dockerfile, 'FROM ${PHP_BASE}');
+
+    // Composer, git and Node live in the build stages only.
+    expect($final)->toContain('USER www-data')->not->toContain('composer')->not->toContain('apt-get')->not->toContain('node');
+    expect(PhpBase::contents())->not->toContain('libmagickwand-dev')->not->toContain('default-mysql-client');
+});
+
+test('every image is tested before it is pushed, and its size recorded', function () {
+    $runner = scriptedRunner(['docker image inspect' => new CommandResult(0, (string) (420 * 1024 * 1024), '', 1)]);
+    $build = runBuild(builderWith($runner), Service::factory()->create(['slug' => 'hiring']), sha: null);
+
+    $log = $runner->transcript();
+    expect(strpos($log, '--entrypoint php "$image" -m'))->toBeLessThan(strpos($log, "docker push 'ghcr.io/rnd-experts-team/hiring:"));
+    expect($log)
+        ->toContain('for ext in bcmath gd intl mbstring')
+        ->toContain('the image runs as root')
+        ->toContain("curl -fsS -o /dev/null 'http://127.0.0.1/up'")
+        ->toContain("--build-arg 'HEALTH_PATH=/up'");
+    expect($build->size_bytes)->toBe(420 * 1024 * 1024);
+});
+
+test('an image that fails its test is never pushed', function () {
+    $runner = scriptedRunner(['--entrypoint php "$image" -m' => new CommandResult(1, 'missing PHP extension: redis', '', 1)]);
+    $build = runBuild(builderWith($runner), Service::factory()->create(['slug' => 'hiring']), sha: null);
+
+    expect($build->status)->toBe('failed');
+    expect($build->error)->toContain('test:');
+    expect($runner->transcript())->not->toContain("docker push 'ghcr.io/rnd-experts-team/hiring:");
 });
 
 test('the Next.js recipe does not use the PHP base and still refreshes its image', function () {

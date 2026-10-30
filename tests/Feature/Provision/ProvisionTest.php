@@ -334,3 +334,20 @@ test('saving with a token left blank keeps it, and remove clears it', function (
     expect(Setting::get(Setting::ACME_EMAIL))->toBe('certs@example.com');
     expect(Setting::has(Setting::REGISTRY_PULL_TOKEN))->toBeFalse();
 });
+
+test('the shared services report their health and rotate their logs', function () {
+    $compose = (new InfraRenderer)->compose();
+
+    expect(substr_count($compose, 'healthcheck:'))->toBe(3);
+    expect($compose)->toContain('max-size: "10m"')->toContain('8222/healthz');
+});
+
+test('setting up a server rotates Docker logs and prunes old images weekly', function () {
+    $script = (string) file_get_contents(resource_path('provision/bootstrap.sh'));
+
+    expect($script)
+        ->toContain('"log-opts": {"max-size": "10m", "max-file": "3"}')
+        ->toContain('"live-restore": true')
+        ->toContain('docker image prune -af --filter until=168h')
+        ->toContain('docker-image-prune.timer');
+});

@@ -1,8 +1,17 @@
 .git
 .github
+.idea
+.vscode
+.claude
 node_modules
 .next
 .env
 .env.local
 .env.development*
 !.env.production.local
+docs
+*.md
+*.tsbuildinfo
+pnpm-lock.yaml
+Dockerfile*
+docker-compose*.yml
