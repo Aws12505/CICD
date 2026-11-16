@@ -1,4 +1,4 @@
-name: LCPortalCICD
+name: cicd
 
 # One image, a container per process. Updating: `git pull`, then
 # `docker compose up -d --build`; migrate runs first, the rest after it.
