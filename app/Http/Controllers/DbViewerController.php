@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\DbViewerSession;
 use App\Models\Stack;
+use App\Services\Provision\StackProvisioner;
+use App\Services\Remote\CommandRunner;
 use App\Support\Roles;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -37,6 +39,21 @@ class DbViewerController extends Controller
 
         if ($server === null || ! $server->isProvisioned()) {
             return back()->with('error', 'Set up the server first: its MySQL does not exist yet.');
+        }
+
+        // The viewer's MySQL users must exist and be able to see the stacks'
+        // databases; making sure costs one quick command and fixes a server
+        // that was set up before the viewer existed.
+        $target = $server->target();
+
+        try {
+            $ensured = app(CommandRunner::class)->run($target, app(StackProvisioner::class)->viewerAccess($server), timeout: 60);
+        } finally {
+            $target->cleanup();
+        }
+
+        if ($ensured->failed()) {
+            return back()->with('error', 'Could not prepare the database users on that server: '.$ensured->failureReason());
         }
 
         $mode = $request->user()->hasRole(Roles::ADMIN) ? DbViewerSession::MODE_WRITE : DbViewerSession::MODE_READ;

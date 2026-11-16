@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { hostKeyMatches, containerCommand, quote, Recorder, mysqlAddressCommand, parseAddress, secretMatches } = require('./lib');
+const { hostKeyMatches, hostKeyAlgorithms, containerCommand, quote, Recorder, mysqlAddressCommand, parseAddress, secretMatches } = require('./lib');
 
 const BLOB = 'AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyDataHere00000000000000';
 
@@ -48,4 +48,12 @@ test('the shared secret is compared exactly', () => {
   assert.strictEqual(secretMatches('a'.repeat(32), 'b'.repeat(32)), false);
   assert.strictEqual(secretMatches('', ''), false);
   assert.strictEqual(secretMatches('a'.repeat(32), undefined), false);
+});
+
+test('the host key type asked for is the one that was pinned', () => {
+  assert.deepStrictEqual(hostKeyAlgorithms('example.com ssh-ed25519 AAAA'), ['ssh-ed25519']);
+  assert.deepStrictEqual(hostKeyAlgorithms('example.com ecdsa-sha2-nistp256 AAAA'), ['ecdsa-sha2-nistp256']);
+  assert.deepStrictEqual(hostKeyAlgorithms('[1.2.3.4]:22 ssh-rsa AAAA'), ['rsa-sha2-512', 'rsa-sha2-256', 'ssh-rsa']);
+  assert.strictEqual(hostKeyAlgorithms(''), null);
+  assert.strictEqual(hostKeyAlgorithms('example.com ssh-dss AAAA'), null);
 });

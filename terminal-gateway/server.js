@@ -25,7 +25,7 @@ const http = require('node:http');
 const net = require('node:net');
 const { WebSocketServer } = require('ws');
 const { Client } = require('ssh2');
-const { hostKeyMatches, containerCommand, Recorder, mysqlAddressCommand, parseAddress, secretMatches } = require('./lib');
+const { hostKeyMatches, hostKeyAlgorithms, containerCommand, Recorder, mysqlAddressCommand, parseAddress, secretMatches } = require('./lib');
 
 const PORT = Number(process.env.PORT || 8090);
 const LARAVEL_URL = (process.env.LARAVEL_URL || 'http://backend').replace(/\/$/, '');
@@ -88,6 +88,7 @@ function connectSsh(details) {
       privateKey: details.private_key,
       readyTimeout: 15000,
       keepaliveInterval: 20000,
+      ...(hostKeyAlgorithms(details.host_key) ? { algorithms: { serverHostKey: hostKeyAlgorithms(details.host_key) } } : {}),
       hostVerifier: (key) => hostKeyMatches(details.host_key, key),
     });
   });
@@ -304,6 +305,7 @@ wss.on('connection', async (ws, req) => {
     keepaliveInterval: 20000,
     // Only the pinned key: the same rule as every other SSH connection the
     // control plane makes.
+    ...(hostKeyAlgorithms(session.host_key) ? { algorithms: { serverHostKey: hostKeyAlgorithms(session.host_key) } } : {}),
     hostVerifier: (key) => hostKeyMatches(session.host_key, key),
   });
 });

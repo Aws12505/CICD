@@ -22,6 +22,25 @@ function hostKeyMatches(pinnedLine, presented) {
   return pinned.length === presented.length && require('node:crypto').timingSafeEqual(pinned, presented);
 }
 
+/**
+ * Which host key type the server must present, from the pinned line. ssh2
+ * otherwise asks for its own favourite (ed25519), a server answers with that
+ * one, and a pin of another type (ECDSA or RSA, whichever ssh-keyscan listed
+ * first) is then refused although it is the same server. The ssh command line
+ * does this itself, which is why Verify works.
+ */
+function hostKeyAlgorithms(pinnedLine) {
+  const parts = String(pinnedLine || '').trim().split(/\s+/);
+  const type = parts.length >= 3 ? parts[1] : parts[0];
+
+  if (type === 'ssh-rsa') {
+    // One RSA key, signed under any of these names.
+    return ['rsa-sha2-512', 'rsa-sha2-256', 'ssh-rsa'];
+  }
+
+  return /^(ssh-ed25519|ecdsa-sha2-nistp(256|384|521))$/.test(type) ? [type] : null;
+}
+
 /** POSIX single-quoting, the same rule as App\Support\Shell::quote. */
 function quote(value) {
   return `'${String(value).replace(/'/g, `'\\''`)}'`;
@@ -107,4 +126,4 @@ function secretMatches(expected, presented) {
   return a.length > 0 && a.length === b.length && require('node:crypto').timingSafeEqual(a, b);
 }
 
-module.exports = { hostKeyMatches, quote, containerCommand, Recorder, mysqlAddressCommand, parseAddress, secretMatches };
+module.exports = { hostKeyMatches, hostKeyAlgorithms, quote, containerCommand, Recorder, mysqlAddressCommand, parseAddress, secretMatches };

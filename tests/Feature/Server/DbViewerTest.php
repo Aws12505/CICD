@@ -6,6 +6,7 @@ use App\Models\Service;
 use App\Models\Stack;
 use App\Models\StackService;
 use App\Services\Provision\StackProvisioner;
+use App\Services\Remote\CommandRunner;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -18,6 +19,8 @@ const VIEWER_SECRET = 'gateway-secret-gateway-secret-gateway-secret';
 beforeEach(function () {
     $this->seed(RoleSeeder::class);
     config(['terminal.gateway_secret' => VIEWER_SECRET, 'terminal.gateway_url' => 'http://terminal-gateway:8090']);
+    // Opening the viewer runs a command on the server; nothing real answers here.
+    app()->instance(CommandRunner::class, new RecordingRunner);
 });
 
 function viewerStack(): Stack
@@ -117,4 +120,19 @@ test('the viewer\'s MySQL users see only the stacks\' databases, and the read-on
         // Never every database: that would include mysql.user and its hashes.
         ->not->toContain('ON *.* TO');
     expect(Str::between($sql, "TO 'cp_viewer_ro'", "\n"))->not->toContain('INSERT');
+});
+
+test('opening the viewer makes sure its MySQL users exist, even on a server with no stack deployed yet', function () {
+    $server = Server::factory()->verified()->create(['provisioned_at' => now(), 'ssh_user' => 'root']);
+    $stack = Stack::factory()->create(['server_id' => $server->id, 'compose_project' => 'acme_live', 'tier' => 'live']);
+    $service = Service::factory()->create(['slug' => 'hiring', 'database_name' => 'hiringpizza']);
+    StackService::create(['stack_id' => $stack->id, 'service_id' => $service->id, 'enabled' => true]);
+
+    $sql = base64_decode(Str::between(app(StackProvisioner::class)->viewerAccess($server), "printf '%s' '", "'"));
+
+    expect($sql)
+        ->toContain("CREATE USER IF NOT EXISTS 'cp_viewer_ro'@'%'")
+        ->toContain("CREATE USER IF NOT EXISTS 'cp_viewer_rw'@'%'")
+        ->toContain("GRANT SELECT, SHOW VIEW ON `hiringpizza`.* TO 'cp_viewer_ro'@'%';")
+        ->not->toContain('ON *.*');
 });

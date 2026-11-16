@@ -4,6 +4,7 @@ namespace App\Services\Provision;
 
 use App\Contracts\Target;
 use App\Models\DbViewerSession;
+use App\Models\Server;
 use App\Models\Service;
 use App\Models\Stack;
 use App\Models\StackService;
@@ -97,6 +98,47 @@ class StackProvisioner
     }
 
     /**
+     * The database viewer's two MySQL users and their grants on every
+     * database of every stack on the server. Idempotent, and run each time
+     * the viewer is opened, so a server set up before the viewer existed, or
+     * one with no stack deployed yet, works without another setup.
+     */
+    public function viewerAccess(Server $server): string
+    {
+        $sql = [];
+
+        foreach ($this->viewerUsers($server) as $viewer => [$password]) {
+            $sql[] = "CREATE USER IF NOT EXISTS '{$viewer}'@'%' IDENTIFIED BY '{$password}';";
+            $sql[] = "ALTER USER '{$viewer}'@'%' IDENTIFIED BY '{$password}';";
+        }
+
+        foreach ($server->stacks()->with('client')->get() as $stack) {
+            foreach ($this->databases($stack) as $database) {
+                foreach ($this->viewerUsers($server) as $viewer => [, $privileges]) {
+                    // A database that does not exist yet is the stack's own to
+                    // create; granting on a name MySQL has not seen is allowed.
+                    $sql[] = "GRANT {$privileges} ON `{$database}`.* TO '{$viewer}'@'%';";
+                }
+            }
+        }
+
+        $sql[] = 'FLUSH PRIVILEGES;';
+
+        return "printf '%s' '".base64_encode(implode("\n", $sql)."\n")."' | base64 -d"
+            .' | docker exec -i mysql sh -c '.Shell::quote('exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD"');
+    }
+
+    /** @return array<string, array{0: string, 1: string}> user => [password, privileges] */
+    private function viewerUsers(Server $server): array
+    {
+        return [
+            DbViewerSession::MYSQL_USERS[DbViewerSession::MODE_WRITE] => [$server->secret('mysql_viewer_rw'),
+                'SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, INDEX, CREATE VIEW, SHOW VIEW, TRIGGER, REFERENCES, CREATE TEMPORARY TABLES, LOCK TABLES, EXECUTE'],
+            DbViewerSession::MYSQL_USERS[DbViewerSession::MODE_READ] => [$server->secret('mysql_viewer_ro'), 'SELECT, SHOW VIEW'],
+        ];
+    }
+
+    /**
      * @param  Collection<int, Service>  $services
      */
     public function mysql(Stack $stack, Collection $services): string
@@ -114,11 +156,7 @@ class StackProvisioner
         // The database viewer's two users, one per server: it sees only the
         // stacks' databases (never mysql.* or the password hashes in it), and
         // the read-only one can change nothing, whatever the page allows.
-        $viewers = [
-            DbViewerSession::MYSQL_USERS[DbViewerSession::MODE_WRITE] => [$stack->server->secret('mysql_viewer_rw'),
-                'SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, INDEX, CREATE VIEW, SHOW VIEW, TRIGGER, REFERENCES, CREATE TEMPORARY TABLES, LOCK TABLES, EXECUTE'],
-            DbViewerSession::MYSQL_USERS[DbViewerSession::MODE_READ] => [$stack->server->secret('mysql_viewer_ro'), 'SELECT, SHOW VIEW'],
-        ];
+        $viewers = $this->viewerUsers($stack->server);
 
         foreach ($viewers as $viewer => [$viewerPassword]) {
             $sql[] = "CREATE USER IF NOT EXISTS '{$viewer}'@'%' IDENTIFIED BY '{$viewerPassword}';";
